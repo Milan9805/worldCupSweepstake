@@ -131,7 +131,6 @@ resource "aws_lambda_function" "api" {
   runtime                        = "nodejs20.x"
   timeout                        = 30
   memory_size                    = 256
-  reserved_concurrent_executions = 5
 
   environment {
     variables = {
