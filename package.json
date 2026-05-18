@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces",
+    "build:lambda": "node scripts/build-lambda.js",
     "test": "npm run test --workspaces --if-present",
     "test:components": "npm run test --workspace=packages/frontend",
     "test:e2e": "npm run test:e2e --workspace=packages/frontend",
@@ -23,6 +24,7 @@
     "@eslint/js": "^9.39.4",
     "@types/node": "^20.14.0",
     "dotenv": "^17.4.2",
+    "esbuild": "^0.28.0",
     "eslint": "^9.39.4",
     "globals": "^17.6.0",
     "typescript": "^5.5.0",
