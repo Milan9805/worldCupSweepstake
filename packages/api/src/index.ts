@@ -42,6 +42,19 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
   const method = event.requestContext.http.method;
   const path = event.rawPath;
 
+  // Handle CORS preflight requests
+  if (method === 'OPTIONS') {
+    return {
+      statusCode: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      },
+      body: '',
+    };
+  }
+
   // Route requests to the appropriate handler
   if (method === 'GET' && path.startsWith('/api/group/')) {
     return getGroupHandler(toV1Event(event));

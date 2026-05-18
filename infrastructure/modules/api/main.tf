@@ -131,6 +131,7 @@ resource "aws_lambda_function" "api" {
   runtime                        = "nodejs20.x"
   timeout                        = 30
   memory_size                    = 256
+  source_code_hash               = filebase64sha256("${path.module}/lambda.zip")
 
   environment {
     variables = {

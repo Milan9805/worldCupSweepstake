@@ -65,6 +65,15 @@ export default function HomePage() {
             {loading ? 'Verifying...' : 'Enter'}
           </button>
         </form>
+
+        <div className="mt-6 text-center">
+          <a
+            href="/admin"
+            className="text-sm text-green-200/70 hover:text-white transition-colors"
+          >
+            Admin access →
+          </a>
+        </div>
       </div>
     </main>
   );
