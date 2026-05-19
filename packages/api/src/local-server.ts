@@ -1,4 +1,8 @@
 // Set local mode BEFORE any imports that use process.env
+import * as path from 'path';
+import * as dotenv from 'dotenv';
+dotenv.config({ path: path.join(__dirname, '..', '..', '..', '.env') });
+
 process.env.IS_LOCAL = 'true';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
 
