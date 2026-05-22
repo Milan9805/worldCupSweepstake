@@ -154,7 +154,7 @@ sweepstake/
 | GET | `/api/matches` | Get all matches |
 | GET | `/api/teams` | Get all teams with stats |
 | GET | `/api/bracket` | Get tournament bracket |
-| POST | `/api/refresh` | Refresh data from football-data.org |
+| POST | `/api/refresh` | Refresh scores from football-data.org (falls back to BBC). Returns `{ matches, teams, source, refreshedAt }` |
 | POST | `/api/admin/login` | Admin authentication |
 | POST | `/api/admin/members` | Update group members |
 | POST | `/api/admin/assign` | Assign teams to people |
@@ -242,7 +242,7 @@ terraform apply -var="football_data_api_key=YOUR_KEY" -var="jwt_secret=YOUR_SECR
 
 - The `POST /api/refresh` endpoint fetches all matches for the configured competition from football-data.org
 - Match scores, statuses, and fixtures are merged into DynamoDB
-- Requests are rate-limited to once per 60 seconds to stay within the free tier
+- A 20-second cooldown is enforced server-side (one refresh per 20s globally, regardless of how many users click), well within the free tier's 10/min limit
 - The competition ID is configured in `packages/api/src/clients/footballData.ts` (currently set to `2000` — update when the official World Cup 2026 ID is published)
 
 ### 4. What it provides
@@ -260,10 +260,39 @@ terraform apply -var="football_data_api_key=YOUR_KEY" -var="jwt_secret=YOUR_SECR
 | Standard | 30 |
 | Advanced | 60 |
 
+## BBC Scraper Fallback
+
+If the football-data.org call fails (rate limit, outage, expired key, etc.), `/api/refresh` automatically falls back to scraping BBC's World Cup fixture pages for live scores. The response includes a `source` field so callers know which path was used:
+
+| `source` | Meaning |
+|----------|---------|
+| `api` | football-data.org returned fresh data |
+| `bbc` | football-data.org failed; scores came from BBC |
+| `cache` | within the 20s cooldown, or both sources failed — returning whatever's in DynamoDB |
+
+When `source === 'bbc'`, the navbar shows an amber **"via BBC"** badge next to the Refresh button.
+
+### Lifecycle constraint
+
+The BBC fallback **only patches `homeScore`, `awayScore`, and `status` on matches that already exist in DynamoDB**. It never creates new rows. That means football-data.org (or seed data) must have populated the fixtures table at least once with the correct `stage`, `group`, `datetime`, and team TLAs before BBC can do anything useful. Fixtures BBC reports that don't correspond to an existing row are silently dropped, as are knockout placeholders ("TBC" / "Winner Group A" etc.).
+
+### How it works
+
+BBC's fixture pages are a client-rendered SPA, but they server-render a JSON hydration blob into `window.__INITIAL_DATA__`. The scraper extracts that blob, walks `data["sport-data-scores-fixtures..."].data.eventGroups[].secondaryGroups[].events[]`, and maps each event's team `fullName` to a TLA via [`packages/shared/src/teamNames.ts`](packages/shared/src/teamNames.ts). Both `2026-06` and `2026-07` pages are fetched in parallel and deduped by `(homeTLA, awayTLA, date)`.
+
+### Verifying the fallback locally
+
+```bash
+# Temporarily set an invalid API key (or unset FOOTBALL_DATA_API_KEY and restart api:local)
+# Then click Refresh in the UI, or:
+curl -s -X POST http://localhost:3001/api/refresh | jq '.data.source'
+# → "bbc"
+```
+
 ## Key Design Decisions
 
 - **Winner takes all**: The person whose team wins the final wins the sweepstake
-- **Manual refresh**: No real-time updates; user-triggered refresh button (rate-limited to 1/min)
+- **Manual refresh**: No real-time updates; user-triggered refresh button with a 20s global cooldown. football-data.org is primary; BBC scraping is the automatic fallback when the API errors
 - **Static export**: Frontend is pure static HTML/JS served from S3/CloudFront
 - **Shared group key**: Simple passphrase per group, no user accounts
 - **Admin auth**: Separate bcrypt-hashed secret, independent of group keys
