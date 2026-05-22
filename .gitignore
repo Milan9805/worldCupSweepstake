@@ -4,6 +4,7 @@ dist/
 out/
 .env
 .env.local
+.env.production
 *.tfstate
 *.tfstate.backup
 *.tfvars

@@ -83,6 +83,14 @@ resource "aws_s3_bucket_cors_configuration" "avatars" {
 }
 
 # CloudFront distribution
+resource "aws_cloudfront_function" "url_rewrite" {
+  name    = "${var.bucket_prefix}-url-rewrite"
+  runtime = "cloudfront-js-2.0"
+  comment = "Rewrite clean URLs (/admin) to static files (/admin.html)"
+  publish = true
+  code    = file("${path.module}/url-rewrite.js")
+}
+
 resource "aws_cloudfront_distribution" "frontend" {
   origin {
     domain_name = aws_s3_bucket_website_configuration.frontend.website_endpoint
@@ -116,9 +124,14 @@ resource "aws_cloudfront_distribution" "frontend" {
     min_ttl                = 0
     default_ttl            = 3600
     max_ttl                = 86400
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.url_rewrite.arn
+    }
   }
 
-  # SPA routing - return index.html for 404s
+  # Fallback: return index.html for any unmatched 404s.
   custom_error_response {
     error_code         = 404
     response_code      = 200
