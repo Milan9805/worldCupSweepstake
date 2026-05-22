@@ -8,7 +8,7 @@ interface NavBarProps {
 }
 
 export default function NavBar({ groupName }: NavBarProps) {
-  const { refresh, isRefreshing } = useRefresh();
+  const { refresh, isRefreshing, source } = useRefresh();
 
   return (
     <nav className="bg-white/95 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-50 shadow-sm">
@@ -48,6 +48,15 @@ export default function NavBar({ groupName }: NavBarProps) {
               </Link>
             </div>
           </div>
+          <div className="flex items-center gap-2">
+            {source === 'bbc' && (
+              <span
+                title="Football-data.org was unavailable; scores were pulled from BBC instead."
+                className="hidden sm:inline-block text-xs font-medium px-2 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-200"
+              >
+                via BBC
+              </span>
+            )}
           <button
             onClick={refresh}
             disabled={isRefreshing}
@@ -77,6 +86,7 @@ export default function NavBar({ groupName }: NavBarProps) {
               '🔄 Refresh Scores'
             )}
           </button>
+          </div>
         </div>
       </div>
     </nav>

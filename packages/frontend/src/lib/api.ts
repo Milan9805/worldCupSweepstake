@@ -35,7 +35,12 @@ export async function getTree() {
 }
 
 export async function refreshScores() {
-  return fetchApi('/api/refresh', { method: 'POST' });
+  return fetchApi<{
+    matches: unknown[];
+    teams: unknown[];
+    source?: 'api' | 'bbc' | 'cache';
+    refreshedAt?: string;
+  }>('/api/refresh', { method: 'POST' });
 }
 
 export async function adminLogin(secret: string) {

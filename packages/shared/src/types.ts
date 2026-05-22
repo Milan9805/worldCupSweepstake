@@ -79,6 +79,15 @@ export interface ApiResponse<T> {
   error?: string;
 }
 
+export type RefreshSource = 'api' | 'bbc' | 'cache';
+
+export interface RefreshResponse {
+  matches: Match[];
+  teams: Team[];
+  source: RefreshSource;
+  refreshedAt: string; // ISO 8601 — when the underlying data was last fetched
+}
+
 export interface DashboardData {
   group: Group;
   teams: Team[];
