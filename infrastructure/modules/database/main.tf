@@ -55,7 +55,7 @@ resource "aws_dynamodb_table" "teams" {
 }
 
 resource "aws_dynamodb_table" "bracket" {
-  name         = "${var.table_prefix}TournamentBracket"
+  name         = "${var.table_prefix}TournamentTree"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "round"
   range_key    = "position"
