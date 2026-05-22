@@ -3,7 +3,8 @@ import { Match } from '@sweepstake/shared';
 const FOOTBALL_DATA_BASE = 'https://api.football-data.org/v4';
 const API_KEY = process.env.FOOTBALL_DATA_API_KEY || '';
 
-// FIFA World Cup 2026 competition ID (TBC - using placeholder)
+// football-data.org uses a persistent ID per competition; the current season
+// under 2000 is the 2026 FIFA World Cup (verified 2026-05-22).
 const COMPETITION_ID = 2000;
 
 // Rate limiting: football-data.org free tier allows 10 requests/minute

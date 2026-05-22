@@ -243,7 +243,7 @@ terraform apply -var="football_data_api_key=YOUR_KEY" -var="jwt_secret=YOUR_SECR
 - The `POST /api/refresh` endpoint fetches all matches for the configured competition from football-data.org
 - Match scores, statuses, and fixtures are merged into DynamoDB
 - A 20-second cooldown is enforced server-side (one refresh per 20s globally, regardless of how many users click), well within the free tier's 10/min limit
-- The competition ID is configured in `packages/api/src/clients/footballData.ts` (currently set to `2000` — update when the official World Cup 2026 ID is published)
+- The competition ID is configured in `packages/api/src/clients/footballData.ts` as `2000` (football-data.org's persistent ID for the FIFA World Cup; the current season under that ID is the 2026 edition)
 
 ### 4. What it provides
 
