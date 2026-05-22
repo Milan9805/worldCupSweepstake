@@ -49,7 +49,10 @@ describe('useRefresh', () => {
   it('prevents concurrent refresh calls', async () => {
     let resolveRefresh: () => void;
     mockedApi.refreshScores.mockImplementation(
-      () => new Promise<void>((resolve) => { resolveRefresh = resolve; })
+      () =>
+        new Promise<{ matches: unknown[]; teams: unknown[] }>((resolve) => {
+          resolveRefresh = () => resolve({ matches: [], teams: [] });
+        }),
     );
 
     const { result } = renderHook(() => useRefresh());

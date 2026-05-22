@@ -5,7 +5,6 @@ import {
   getNextSlot,
   isGroupStageComplete,
   KNOCKOUT_BRACKET,
-  GroupStandingEntry,
 } from '../bracket';
 import { Team } from '../types';
 
@@ -199,6 +198,21 @@ describe('determineQualifiedTeams', () => {
     // A3 should be the best 3rd-place team
     expect(qualified.thirdPlace[0]).toBe('A3');
   });
+
+  it('skips groups with fewer than 3 teams', () => {
+    // A group with only 2 teams contributes nothing — no winner/runner/third
+    // is recorded for it.
+    const standings = new Map([
+      ['A', [
+        { teamCode: 'X1', points: 9, goalDifference: 5, goalsFor: 8, groupLetter: 'A' },
+        { teamCode: 'X2', points: 3, goalDifference: 0, goalsFor: 3, groupLetter: 'A' },
+      ]],
+    ]);
+    const qualified = determineQualifiedTeams(standings);
+    expect(qualified.groupWinners.size).toBe(0);
+    expect(qualified.groupRunners.size).toBe(0);
+    expect(qualified.thirdPlace).toHaveLength(0);
+  });
 });
 
 describe('generateBracketSlots', () => {
@@ -218,6 +232,18 @@ describe('generateBracketSlots', () => {
     r32.forEach((slot) => {
       expect(slot.team1).not.toBeNull();
       expect(slot.team2).not.toBeNull();
+    });
+  });
+
+  it('leaves R32 slots null when no teams are qualified', () => {
+    // Empty input → no groupWinners / groupRunners / thirdPlace, so every
+    // bracket source resolves to null rather than throwing.
+    const { slots } = generateBracketSlots([]);
+    const r32 = slots.filter((s) => s.round === 'ROUND_OF_32');
+    expect(r32).toHaveLength(16);
+    r32.forEach((slot) => {
+      expect(slot.team1).toBeNull();
+      expect(slot.team2).toBeNull();
     });
   });
 

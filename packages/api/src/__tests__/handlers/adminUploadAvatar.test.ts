@@ -131,4 +131,64 @@ describe('adminUploadAvatar handler', () => {
     const result = await handler(event);
     expect(result.statusCode).toBe(500);
   });
+
+  it('returns 400 when the body is null (defaults to {})', async () => {
+    const event = makeEvent({ body: null });
+    const result = await handler(event);
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).error).toBe(
+      'groupKey, personName, and contentType are required',
+    );
+  });
+});
+
+describe('adminUploadAvatar handler (production S3 config)', () => {
+  // Re-import the module with IS_LOCAL unset so the production branches of
+  // the module-level S3Client config and the runtime imageUrl ternary are
+  // executed.
+  it('uses the production S3 URL format when IS_LOCAL is not "true"', async () => {
+    jest.resetModules();
+    delete process.env.IS_LOCAL;
+    process.env.AVATAR_BUCKET = 'my-prod-bucket';
+
+    jest.doMock('@aws-sdk/client-s3', () => ({
+      S3Client: jest.fn().mockImplementation(() => ({})),
+      PutObjectCommand: jest.fn().mockImplementation((input) => input),
+    }));
+    jest.doMock('@aws-sdk/s3-request-presigner', () => ({
+      getSignedUrl: jest.fn().mockResolvedValue('https://prod-signed-url.example.com'),
+    }));
+    jest.doMock('crypto', () => ({
+      randomUUID: jest.fn().mockReturnValue('prod-uuid-0000'),
+    }));
+    jest.doMock('../../handlers/adminLogin', () => ({
+      verifyAdminToken: jest.fn().mockReturnValue(true),
+    }));
+
+    const { handler: prodHandler } = await import('../../handlers/adminUploadAvatar');
+
+    const event = {
+      httpMethod: 'POST',
+      path: '/api/admin/upload-avatar',
+      pathParameters: null,
+      queryStringParameters: null,
+      headers: { Authorization: 'Bearer valid-token' },
+      body: JSON.stringify({ groupKey: 'g1', personName: 'Alice', contentType: 'image/png' }),
+      isBase64Encoded: false,
+      resource: '',
+      stageVariables: null,
+      requestContext: {},
+      multiValueHeaders: {},
+      multiValueQueryStringParameters: null,
+    } as unknown as APIGatewayProxyEvent;
+
+    const result = await prodHandler(event);
+    expect(result.statusCode).toBe(200);
+    const body = JSON.parse(result.body);
+    expect(body.data.imageUrl).toBe(
+      'https://my-prod-bucket.s3.amazonaws.com/avatars/g1/prod-uuid-0000.png',
+    );
+
+    delete process.env.AVATAR_BUCKET;
+  });
 });

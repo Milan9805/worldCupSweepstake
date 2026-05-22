@@ -72,7 +72,7 @@ describe('TreePage', () => {
   });
 
   it('renders knockout fixtures from matches endpoint', async () => {
-    const slots = [];
+    const slots: unknown[] = [];
     const group = { groupKey: 'test', groupName: 'Test', members: [{ name: 'Alice', imageUrl: null, teams: ['ENG'] }] };
     const matches = [
       { matchId: '1', homeTeam: 'ENG', awayTeam: 'BRA', homeScore: null, awayScore: null, status: 'SCHEDULED', stage: 'QUARTER_FINAL', group: null, datetime: '2026-07-05T18:00:00Z', venue: 'Stadium' },

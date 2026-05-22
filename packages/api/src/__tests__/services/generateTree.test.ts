@@ -299,4 +299,59 @@ describe('processKnockoutResults', () => {
 
     expect(mockedDb.putTreeSlot).not.toHaveBeenCalled();
   });
+
+  it('progresses the away team when they win', async () => {
+    const existingSlots = [
+      { round: 'ROUND_OF_32', position: 1, team1: 'ENG', team2: 'NGA', score1: null, score2: null, winner: null, datetime: null },
+      { round: 'ROUND_OF_16', position: 1, team1: null, team2: null, score1: null, score2: null, winner: null, datetime: null },
+    ];
+    mockedDb.getTree.mockResolvedValue(existingSlots as unknown as Record<string, unknown>[]);
+    mockedDb.putTreeSlot.mockResolvedValue(undefined);
+    mockedDb.getAllTeams.mockResolvedValue([
+      makeTeam('ENG', 'A', 9, 5, 8) as unknown as Record<string, unknown>,
+    ]);
+    mockedDb.putTeam.mockResolvedValue(undefined);
+
+    await processKnockoutResults([
+      { matchId: '101', stage: 'ROUND_OF_32', homeTeam: 'ENG', awayTeam: 'NGA', homeScore: 0, awayScore: 2, status: 'FINISHED' },
+    ]);
+
+    const updatedSlot = mockedDb.putTreeSlot.mock.calls[0][0] as unknown as TreeSlot;
+    expect(updatedSlot.winner).toBe('NGA');
+    const updatedTeam = mockedDb.putTeam.mock.calls[0][0] as unknown as Team;
+    expect(updatedTeam.teamCode).toBe('ENG');
+    expect(updatedTeam.eliminated).toBe(true);
+  });
+
+  it('skips knockout matches where the tree has no slot for those teams', async () => {
+    // Same round, but ENG vs BRA — no slot has both of them.
+    mockedDb.getTree.mockResolvedValue([
+      { round: 'ROUND_OF_32', position: 1, team1: 'ENG', team2: 'NGA', score1: null, score2: null, winner: null, datetime: null },
+    ] as unknown as Record<string, unknown>[]);
+
+    await processKnockoutResults([
+      { matchId: '999', stage: 'ROUND_OF_32', homeTeam: 'ENG', awayTeam: 'BRA', homeScore: 1, awayScore: 0, status: 'FINISHED' },
+    ]);
+
+    expect(mockedDb.putTreeSlot).not.toHaveBeenCalled();
+  });
+});
+
+describe('formatRoundName fallback', () => {
+  it('falls back to the raw round name when the round is not in the lookup table', async () => {
+    // THIRD_PLACE isn't in the formatRoundName map — the loser's
+    // eliminatedAt should fall back to the raw string.
+    const loserTeam = makeTeam('NGA', 'A', 3, -1, 3);
+    mockedDb.getTree.mockResolvedValue([
+      { round: 'THIRD_PLACE', position: 1, team1: 'ENG', team2: 'NGA', score1: null, score2: null, winner: null, datetime: null },
+    ] as unknown as Record<string, unknown>[]);
+    mockedDb.putTreeSlot.mockResolvedValue(undefined);
+    mockedDb.getAllTeams.mockResolvedValue([loserTeam as unknown as Record<string, unknown>]);
+    mockedDb.putTeam.mockResolvedValue(undefined);
+
+    await progressKnockoutWinner('THIRD_PLACE', 1, 'ENG', 2, 0, 'NGA');
+
+    const updatedTeam = mockedDb.putTeam.mock.calls[0][0] as unknown as Team;
+    expect(updatedTeam.eliminatedAt).toBe('THIRD_PLACE');
+  });
 });

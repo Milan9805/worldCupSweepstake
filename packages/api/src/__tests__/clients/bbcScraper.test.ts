@@ -119,6 +119,17 @@ describe('parseBbcHtml (status mapping for not-yet-observed states)', () => {
     expect(f.homeScore).toBe(4);
     expect(f.awayScore).toBe(0);
   });
+
+  it('defaults to SCHEDULED when neither status nor statusComment matches any known pattern', () => {
+    const html = makeHtmlWith({
+      home: { fullName: 'Portugal' },
+      away: { fullName: 'Senegal' },
+      startDateTime: '2026-06-25T19:00:00Z',
+      status: 'WeirdNewStatus',
+      statusComment: { value: 'unknown' },
+    });
+    expect(parseBbcHtml(html)[0].status).toBe('SCHEDULED');
+  });
 });
 
 describe('parseBbcHtml edge cases', () => {

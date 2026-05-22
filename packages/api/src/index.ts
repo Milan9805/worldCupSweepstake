@@ -1,4 +1,8 @@
-import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
+import {
+  APIGatewayProxyEventV2,
+  APIGatewayProxyResultV2,
+  APIGatewayEventRequestContextWithAuthorizer,
+} from 'aws-lambda';
 import { handler as getGroupHandler } from './handlers/getGroup';
 import { handler as getMatchesHandler } from './handlers/getMatches';
 import { handler as getTeamsHandler } from './handlers/getTeams';
@@ -32,7 +36,7 @@ function toV1Event(event: APIGatewayProxyEventV2) {
     isBase64Encoded: event.isBase64Encoded,
     resource: '',
     stageVariables: null,
-    requestContext: {} as any,
+    requestContext: {} as unknown as APIGatewayEventRequestContextWithAuthorizer<undefined>,
     multiValueHeaders: {},
     multiValueQueryStringParameters: null,
   };

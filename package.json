@@ -11,6 +11,7 @@
     "build": "npm run build --workspaces",
     "build:lambda": "node scripts/build-lambda.js",
     "test": "npm run test --workspaces --if-present",
+    "posttest": "npm run lint",
     "test:components": "npm run test --workspace=packages/frontend",
     "test:e2e": "npm run test:e2e --workspace=packages/frontend",
     "lint": "npm run lint --workspaces --if-present",
