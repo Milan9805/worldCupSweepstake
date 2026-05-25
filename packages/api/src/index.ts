@@ -11,6 +11,7 @@ import { handler as getBracketHandler } from './handlers/getBracket';
 import { handler as refreshHandler } from './handlers/refresh';
 import { handler as adminLoginHandler } from './handlers/adminLogin';
 import { handler as adminMembersHandler } from './handlers/adminMembers';
+import { handler as adminCreateGroupHandler } from './handlers/adminCreateGroup';
 import { handler as adminAssignHandler } from './handlers/adminAssign';
 import { handler as adminUploadAvatarHandler } from './handlers/adminUploadAvatar';
 
@@ -83,6 +84,9 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
   }
   if (method === 'POST' && path === '/api/admin/members') {
     return adminMembersHandler(toV1Event(event));
+  }
+  if (method === 'POST' && path === '/api/admin/groups') {
+    return adminCreateGroupHandler(toV1Event(event));
   }
   if (method === 'POST' && path === '/api/admin/assign') {
     return adminAssignHandler(toV1Event(event));

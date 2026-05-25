@@ -15,6 +15,7 @@ import { handler as getTreeHandler } from './handlers/getTree';
 import { handler as refreshHandler } from './handlers/refresh';
 import { handler as adminLoginHandler } from './handlers/adminLogin';
 import { handler as adminMembersHandler } from './handlers/adminMembers';
+import { handler as adminCreateGroupHandler } from './handlers/adminCreateGroup';
 import { handler as adminAssignHandler } from './handlers/adminAssign';
 import { handler as adminUploadAvatarHandler } from './handlers/adminUploadAvatar';
 import { APIGatewayProxyEvent } from 'aws-lambda';
@@ -81,6 +82,12 @@ app.post('/api/admin/login', async (req, res) => {
 app.post('/api/admin/members', async (req, res) => {
   const event = toLambdaEvent(req);
   const result = await adminMembersHandler(event);
+  res.status(result.statusCode).json(JSON.parse(result.body));
+});
+
+app.post('/api/admin/groups', async (req, res) => {
+  const event = toLambdaEvent(req);
+  const result = await adminCreateGroupHandler(event);
   res.status(result.statusCode).json(JSON.parse(result.body));
 });
 

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import NavBar from '@/components/NavBar';
 import DragDropAssign from '@/components/DragDropAssign';
-import { adminLogin, adminUpdateMembers, adminGetUploadUrl } from '@/lib/api';
+import { adminLogin, adminCreateGroup, adminUpdateMembers, adminGetUploadUrl } from '@/lib/api';
 
 export default function AdminPage() {
   const [token, setToken] = useState<string | null>(null);
@@ -16,6 +16,10 @@ export default function AdminPage() {
   const [memberName, setMemberName] = useState('');
   const [membersList, setMembersList] = useState<string[]>([]);
   const [statusMessage, setStatusMessage] = useState('');
+
+  // New group state
+  const [newGroupKey, setNewGroupKey] = useState('');
+  const [newGroupName, setNewGroupName] = useState('');
 
 
 
@@ -33,6 +37,20 @@ export default function AdminPage() {
       setSecret('');
     } catch (err) {
       setLoginError(err instanceof Error ? err.message : 'Login failed');
+    }
+  };
+
+  const handleCreateGroup = async () => {
+    if (!token || !newGroupKey.trim() || !newGroupName.trim()) return;
+    try {
+      const created = await adminCreateGroup(token, newGroupKey.trim(), newGroupName.trim());
+      setStatusMessage(`Group "${created.groupName}" created.`);
+      setGroupKey(created.groupKey);
+      setMembersList([]);
+      setNewGroupKey('');
+      setNewGroupName('');
+    } catch (err) {
+      setStatusMessage(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
@@ -141,7 +159,32 @@ export default function AdminPage() {
         {/* Members tab */}
         {activeTab === 'members' && (
           <div className="space-y-4">
-            <h2 className="text-lg font-bold text-white">Manage Group Members</h2>
+            <h2 className="text-lg font-bold text-white">Create New Group</h2>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                value={newGroupKey}
+                onChange={(e) => setNewGroupKey(e.target.value)}
+                placeholder="New group key (e.g. lads-on-tour)..."
+                className="flex-1 px-4 py-2 rounded-lg bg-black/30 border border-white/30 text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+              <input
+                type="text"
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                placeholder="New group name (e.g. Lads on Tour)..."
+                className="flex-1 px-4 py-2 rounded-lg bg-black/30 border border-white/30 text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+              <button
+                onClick={handleCreateGroup}
+                disabled={!newGroupKey.trim() || !newGroupName.trim()}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg"
+              >
+                Create Group
+              </button>
+            </div>
+
+            <h2 className="text-lg font-bold text-white pt-4 border-t border-white/10">Manage Group Members</h2>
             <input
               type="text"
               value={groupKey}

@@ -203,6 +203,96 @@ describe('DragDropAssign', () => {
     });
   });
 
+  it('handles drag from member back to unassigned pool', async () => {
+    const groupData = {
+      groupKey: 'g1',
+      groupName: 'Test',
+      members: [{ name: 'Alice', imageUrl: null, teams: ['ENG'] }],
+    };
+    const teamsData = [
+      { teamCode: 'ENG', name: 'England', flag: '🏴', fifaRanking: 4, groupLetter: 'A', stats: { played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, goalDifference: 0, points: 0, yellowCards: 0, redCards: 0, possession: null, xG: null }, eliminated: false, eliminatedAt: null },
+    ];
+    mockedApi.getGroup.mockResolvedValue(groupData);
+    mockedApi.getTeams.mockResolvedValue(teamsData);
+
+    render(<DragDropAssign token="test-token" onStatus={mockOnStatus} />);
+    fireEvent.change(screen.getByPlaceholderText('Group key...'), { target: { value: 'g1' } });
+    fireEvent.click(screen.getByText('Load Group'));
+
+    await waitFor(() => {
+      expect(screen.getByText('(1 teams)')).toBeInTheDocument();
+    });
+
+    const pool = screen.getByText(/Unassigned Teams/).closest('div')!;
+
+    fireEvent.dragOver(pool, { dataTransfer: { dropEffect: '' }, preventDefault: jest.fn() });
+    fireEvent.drop(pool, {
+      dataTransfer: { getData: () => 'ENG' },
+      preventDefault: jest.fn(),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('(0 teams)')).toBeInTheDocument();
+      expect(screen.getByText(/Unassigned Teams \(1\)/)).toBeInTheDocument();
+    });
+  });
+
+  it('ignores drop on pool with no team code', async () => {
+    const groupData = {
+      groupKey: 'g1',
+      groupName: 'Test',
+      members: [{ name: 'Alice', imageUrl: null, teams: ['ENG'] }],
+    };
+    const teamsData = [
+      { teamCode: 'ENG', name: 'England', flag: '🏴', fifaRanking: 4, groupLetter: 'A', stats: { played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, goalDifference: 0, points: 0, yellowCards: 0, redCards: 0, possession: null, xG: null }, eliminated: false, eliminatedAt: null },
+    ];
+    mockedApi.getGroup.mockResolvedValue(groupData);
+    mockedApi.getTeams.mockResolvedValue(teamsData);
+
+    render(<DragDropAssign token="test-token" onStatus={mockOnStatus} />);
+    fireEvent.change(screen.getByPlaceholderText('Group key...'), { target: { value: 'g1' } });
+    fireEvent.click(screen.getByText('Load Group'));
+
+    await waitFor(() => {
+      expect(screen.getByText('(1 teams)')).toBeInTheDocument();
+    });
+
+    const pool = screen.getByText(/Unassigned Teams/).closest('div')!;
+    fireEvent.drop(pool, {
+      dataTransfer: { getData: () => '' },
+      preventDefault: jest.fn(),
+    });
+
+    // No change
+    expect(screen.getByText('(1 teams)')).toBeInTheDocument();
+  });
+
+  it('ignores drop on member with no team code', async () => {
+    const groupData = {
+      groupKey: 'g1',
+      groupName: 'Test',
+      members: [{ name: 'Alice', imageUrl: null, teams: [] }],
+    };
+    mockedApi.getGroup.mockResolvedValue(groupData);
+    mockedApi.getTeams.mockResolvedValue([]);
+
+    render(<DragDropAssign token="test-token" onStatus={mockOnStatus} />);
+    fireEvent.change(screen.getByPlaceholderText('Group key...'), { target: { value: 'g1' } });
+    fireEvent.click(screen.getByText('Load Group'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Alice')).toBeInTheDocument();
+    });
+
+    const dropZone = screen.getByText('Alice').closest('[class*="border-dashed"]')!;
+    fireEvent.drop(dropZone, {
+      dataTransfer: { getData: () => '' },
+      preventDefault: jest.fn(),
+    });
+
+    expect(screen.getByText('(0 teams)')).toBeInTheDocument();
+  });
+
   it('handles drag and drop to member', async () => {
     const groupData = {
       groupKey: 'g1',

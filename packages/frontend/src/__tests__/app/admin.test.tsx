@@ -256,6 +256,100 @@ describe('AdminPage', () => {
     });
   });
 
+  it('creates a new group', async () => {
+    mockedApi.adminLogin.mockResolvedValue({ token: 'test-token' });
+    mockedApi.adminCreateGroup.mockResolvedValue({ groupKey: 'new-grp', groupName: 'New Group' } as never);
+
+    render(<AdminPage />);
+    fireEvent.change(screen.getByPlaceholderText('Enter admin secret...'), { target: { value: 'secret' } });
+    fireEvent.submit(screen.getByPlaceholderText('Enter admin secret...').closest('form')!);
+
+    await waitFor(() => {
+      expect(screen.getByText('Create New Group')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText(/New group key/), { target: { value: 'new-grp' } });
+    fireEvent.change(screen.getByPlaceholderText(/New group name/), { target: { value: 'New Group' } });
+    fireEvent.click(screen.getByText('Create Group'));
+
+    await waitFor(() => {
+      expect(mockedApi.adminCreateGroup).toHaveBeenCalledWith('test-token', 'new-grp', 'New Group');
+      expect(screen.getByText(/Group "New Group" created/)).toBeInTheDocument();
+    });
+  });
+
+  it('handles create group error', async () => {
+    mockedApi.adminLogin.mockResolvedValue({ token: 'test-token' });
+    mockedApi.adminCreateGroup.mockRejectedValue(new Error('Already exists'));
+
+    render(<AdminPage />);
+    fireEvent.change(screen.getByPlaceholderText('Enter admin secret...'), { target: { value: 'secret' } });
+    fireEvent.submit(screen.getByPlaceholderText('Enter admin secret...').closest('form')!);
+
+    await waitFor(() => {
+      expect(screen.getByText('Create New Group')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText(/New group key/), { target: { value: 'dup' } });
+    fireEvent.change(screen.getByPlaceholderText(/New group name/), { target: { value: 'Dup' } });
+    fireEvent.click(screen.getByText('Create Group'));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Error: Already exists/)).toBeInTheDocument();
+    });
+  });
+
+  it('handles avatar upload error', async () => {
+    mockedApi.adminLogin.mockResolvedValue({ token: 'test-token' });
+    mockedApi.adminGetUploadUrl.mockRejectedValue(new Error('Upload denied'));
+
+    render(<AdminPage />);
+    fireEvent.change(screen.getByPlaceholderText('Enter admin secret...'), { target: { value: 'secret' } });
+    fireEvent.submit(screen.getByPlaceholderText('Enter admin secret...').closest('form')!);
+
+    await waitFor(() => {
+      expect(screen.getByText('avatars')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('avatars'));
+
+    const groupKeyInputs = screen.getAllByPlaceholderText('Group key...');
+    fireEvent.change(groupKeyInputs[groupKeyInputs.length - 1], { target: { value: 'grp' } });
+    fireEvent.change(screen.getByPlaceholderText('Person name...'), { target: { value: 'Alice' } });
+    const file = new File(['image'], 'avatar.png', { type: 'image/png' });
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    Object.defineProperty(fileInput, 'files', { value: [file] });
+    fireEvent.change(fileInput);
+
+    fireEvent.click(screen.getByText('Upload'));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Error: Upload denied/)).toBeInTheDocument();
+    });
+  });
+
+  it('clears avatar form', async () => {
+    mockedApi.adminLogin.mockResolvedValue({ token: 'test-token' });
+
+    render(<AdminPage />);
+    fireEvent.change(screen.getByPlaceholderText('Enter admin secret...'), { target: { value: 'secret' } });
+    fireEvent.submit(screen.getByPlaceholderText('Enter admin secret...').closest('form')!);
+
+    await waitFor(() => {
+      expect(screen.getByText('avatars')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('avatars'));
+
+    const groupKeyInputs = screen.getAllByPlaceholderText('Group key...');
+    const avatarGroupKeyInput = groupKeyInputs[groupKeyInputs.length - 1];
+    fireEvent.change(avatarGroupKeyInput, { target: { value: 'grp' } });
+    fireEvent.change(screen.getByPlaceholderText('Person name...'), { target: { value: 'Alice' } });
+
+    fireEvent.click(screen.getByText('Clear'));
+
+    expect(avatarGroupKeyInput).toHaveValue('');
+    expect(screen.getByPlaceholderText('Person name...')).toHaveValue('');
+  });
+
   it('adds member via Enter key', async () => {
     mockedApi.adminLogin.mockResolvedValue({ token: 'test-token' });
     render(<AdminPage />);

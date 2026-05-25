@@ -50,6 +50,21 @@ export async function adminLogin(secret: string) {
   });
 }
 
+export async function adminCreateGroup(
+  token: string,
+  groupKey: string,
+  groupName: string
+) {
+  return fetchApi<{ groupKey: string; groupName: string; members: [] }>(
+    '/api/admin/groups',
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ groupKey, groupName }),
+    }
+  );
+}
+
 export async function adminUpdateMembers(
   token: string,
   groupKey: string,
