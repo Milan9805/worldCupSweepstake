@@ -1,14 +1,11 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { getConfig } from '../db/dynamodb';
+import { getSecret } from '../lib/secrets';
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 
-function getJwtSecret(): string {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    throw new Error('JWT_SECRET environment variable is not set');
-  }
-  return secret;
+function getJwtSecret(): Promise<string> {
+  return getSecret('JWT_SECRET', 'JWT_SECRET_SSM_NAME');
 }
 
 const MAX_ATTEMPTS = 5;
@@ -93,7 +90,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     }
 
     attempts.delete(ip);
-    const token = jwt.sign({ role: 'admin' }, getJwtSecret(), { expiresIn: '24h' });
+    const token = jwt.sign({ role: 'admin' }, await getJwtSecret(), { expiresIn: '24h' });
 
     return {
       statusCode: 200,
@@ -110,9 +107,10 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
   }
 }
 
-export function verifyAdminToken(token: string): boolean {
+export async function verifyAdminToken(token: string): Promise<boolean> {
   try {
-    const decoded = jwt.verify(token, getJwtSecret()) as { role: string };
+    const secret = await getJwtSecret();
+    const decoded = jwt.verify(token, secret) as { role: string };
     return decoded.role === 'admin';
   } catch {
     return false;

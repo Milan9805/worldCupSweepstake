@@ -38,7 +38,7 @@ describe('adminUploadAvatar handler', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(console, 'error').mockImplementation(() => {});
-    mockedAdminLogin.verifyAdminToken.mockReturnValue(true);
+    mockedAdminLogin.verifyAdminToken.mockResolvedValue(true);
     process.env.IS_LOCAL = 'true';
   });
 
@@ -51,7 +51,7 @@ describe('adminUploadAvatar handler', () => {
   });
 
   it('returns 401 if unauthorized', async () => {
-    mockedAdminLogin.verifyAdminToken.mockReturnValue(false);
+    mockedAdminLogin.verifyAdminToken.mockResolvedValue(false);
     const event = makeEvent({
       body: JSON.stringify({ groupKey: 'g1', personName: 'Alice', contentType: 'image/png' }),
     });
@@ -122,9 +122,7 @@ describe('adminUploadAvatar handler', () => {
   });
 
   it('returns 500 on unexpected error', async () => {
-    mockedAdminLogin.verifyAdminToken.mockImplementation(() => {
-      throw new Error('Unexpected');
-    });
+    mockedAdminLogin.verifyAdminToken.mockRejectedValue(new Error('Unexpected'));
     const event = makeEvent({
       body: JSON.stringify({ groupKey: 'g1', personName: 'Alice', contentType: 'image/png' }),
     });
@@ -162,7 +160,7 @@ describe('adminUploadAvatar handler (production S3 config)', () => {
       randomUUID: jest.fn().mockReturnValue('prod-uuid-0000'),
     }));
     jest.doMock('../../handlers/adminLogin', () => ({
-      verifyAdminToken: jest.fn().mockReturnValue(true),
+      verifyAdminToken: jest.fn().mockResolvedValue(true),
     }));
 
     const { handler: prodHandler } = await import('../../handlers/adminUploadAvatar');

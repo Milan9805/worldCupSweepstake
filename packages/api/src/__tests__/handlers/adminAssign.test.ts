@@ -31,7 +31,7 @@ describe('adminAssign handler', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(console, 'error').mockImplementation(() => {});
-    mockedAdminLogin.verifyAdminToken.mockReturnValue(true);
+    mockedAdminLogin.verifyAdminToken.mockResolvedValue(true);
   });
 
   afterEach(() => {
@@ -40,14 +40,14 @@ describe('adminAssign handler', () => {
 
   it('returns 401 if no auth token', async () => {
     const event = makeEvent({ headers: {} });
-    mockedAdminLogin.verifyAdminToken.mockReturnValue(false);
+    mockedAdminLogin.verifyAdminToken.mockResolvedValue(false);
     const result = await handler(event);
     expect(result.statusCode).toBe(401);
     expect(JSON.parse(result.body)).toEqual({ success: false, error: 'Unauthorized' });
   });
 
   it('returns 401 if token is invalid', async () => {
-    mockedAdminLogin.verifyAdminToken.mockReturnValue(false);
+    mockedAdminLogin.verifyAdminToken.mockResolvedValue(false);
     const event = makeEvent({
       body: JSON.stringify({ groupKey: 'g1', assignments: [] }),
     });
@@ -117,7 +117,7 @@ describe('adminAssign handler', () => {
   });
 
   it('handles lowercase authorization header', async () => {
-    mockedAdminLogin.verifyAdminToken.mockReturnValue(true);
+    mockedAdminLogin.verifyAdminToken.mockResolvedValue(true);
     mockedDb.getGroup.mockResolvedValue({ groupKey: 'g1', members: [] });
     mockedDb.putGroup.mockResolvedValue(undefined);
 

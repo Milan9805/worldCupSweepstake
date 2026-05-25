@@ -165,28 +165,28 @@ describe('verifyAdminToken', () => {
     jest.clearAllMocks();
   });
 
-  it('returns true for valid admin token', () => {
+  it('returns true for valid admin token', async () => {
     (mockedJwt.verify as jest.Mock).mockReturnValue({ role: 'admin' });
-    expect(verifyAdminToken('valid-token')).toBe(true);
+    await expect(verifyAdminToken('valid-token')).resolves.toBe(true);
   });
 
-  it('returns false for non-admin role', () => {
+  it('returns false for non-admin role', async () => {
     (mockedJwt.verify as jest.Mock).mockReturnValue({ role: 'user' });
-    expect(verifyAdminToken('valid-token')).toBe(false);
+    await expect(verifyAdminToken('valid-token')).resolves.toBe(false);
   });
 
-  it('returns false for invalid token', () => {
+  it('returns false for invalid token', async () => {
     (mockedJwt.verify as jest.Mock).mockImplementation(() => {
       throw new Error('invalid token');
     });
-    expect(verifyAdminToken('invalid-token')).toBe(false);
+    await expect(verifyAdminToken('invalid-token')).resolves.toBe(false);
   });
 
-  it('returns false if JWT_SECRET is unset', () => {
+  it('returns false if JWT_SECRET is unset and no SSM name configured', async () => {
     const original = process.env.JWT_SECRET;
     delete process.env.JWT_SECRET;
     try {
-      expect(verifyAdminToken('any-token')).toBe(false);
+      await expect(verifyAdminToken('any-token')).resolves.toBe(false);
     } finally {
       process.env.JWT_SECRET = original;
     }

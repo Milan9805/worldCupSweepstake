@@ -1,7 +1,11 @@
 import { Match } from '@sweepstake/shared';
+import { getSecret } from '../lib/secrets';
 
 const FOOTBALL_DATA_BASE = 'https://api.football-data.org/v4';
-const API_KEY = process.env.FOOTBALL_DATA_API_KEY || '';
+
+function getApiKey(): Promise<string> {
+  return getSecret('FOOTBALL_DATA_API_KEY', 'FOOTBALL_DATA_API_KEY_SSM_NAME');
+}
 
 // football-data.org uses a persistent ID per competition; the current season
 // under 2000 is the 2026 FIFA World Cup (verified 2026-05-22).
@@ -57,9 +61,10 @@ interface FootballDataStanding {
 async function fetchFromApi<T = Record<string, unknown>>(path: string): Promise<T> {
   checkRateLimit();
 
+  const apiKey = await getApiKey();
   const response = await fetch(`${FOOTBALL_DATA_BASE}${path}`, {
     headers: {
-      'X-Auth-Token': API_KEY,
+      'X-Auth-Token': apiKey,
     },
   });
 

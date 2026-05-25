@@ -23,7 +23,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const authHeader = event.headers['Authorization'] || event.headers['authorization'];
     const token = authHeader?.replace('Bearer ', '');
 
-    if (!token || !verifyAdminToken(token)) {
+    if (!token || !(await verifyAdminToken(token))) {
       return {
         statusCode: 401,
         headers: corsHeaders(),

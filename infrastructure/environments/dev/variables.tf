@@ -23,14 +23,16 @@ variable "domain_name" {
   default = ""
 }
 
-variable "football_data_api_key" {
-  type      = string
-  sensitive = true
+variable "jwt_secret_ssm_name" {
+  type        = string
+  description = "SSM SecureString parameter name holding the JWT signing secret"
+  default     = "/sweepstake/dev/jwt_secret"
 }
 
-variable "jwt_secret" {
-  type      = string
-  sensitive = true
+variable "football_data_api_key_ssm_name" {
+  type        = string
+  description = "SSM SecureString parameter name holding the football-data.org API key"
+  default     = "/sweepstake/dev/football_data_api_key"
 }
 
 variable "alert_email" {

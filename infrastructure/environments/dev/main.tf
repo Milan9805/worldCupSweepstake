@@ -30,15 +30,15 @@ module "frontend" {
 
 module "api" {
   source = "../../modules/api"
-  
-  environment       = var.environment
-  table_prefix      = var.table_prefix
-  avatar_bucket_arn = module.frontend.avatar_bucket_arn
-  avatar_bucket_name = module.frontend.avatar_bucket_name
-  dynamodb_table_arns = module.database.table_arns
-  football_data_api_key = var.football_data_api_key
-  jwt_secret           = var.jwt_secret
-  alert_email          = var.alert_email
+
+  environment                    = var.environment
+  table_prefix                   = var.table_prefix
+  avatar_bucket_arn              = module.frontend.avatar_bucket_arn
+  avatar_bucket_name             = module.frontend.avatar_bucket_name
+  dynamodb_table_arns            = module.database.table_arns
+  jwt_secret_ssm_name            = var.jwt_secret_ssm_name
+  football_data_api_key_ssm_name = var.football_data_api_key_ssm_name
+  alert_email                    = var.alert_email
 }
 
 module "budget" {

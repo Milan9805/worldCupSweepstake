@@ -18,19 +18,27 @@ variable "dynamodb_table_arns" {
   type = list(string)
 }
 
-variable "football_data_api_key" {
-  type      = string
-  sensitive = true
+variable "jwt_secret_ssm_name" {
+  type        = string
+  description = "Name of the SSM SecureString parameter holding the JWT signing secret"
 }
 
-variable "jwt_secret" {
-  type      = string
-  sensitive = true
+variable "football_data_api_key_ssm_name" {
+  type        = string
+  description = "Name of the SSM SecureString parameter holding the football-data.org API key"
 }
 
 variable "alert_email" {
   type    = string
   default = ""
+}
+
+data "aws_region" "current" {}
+data "aws_caller_identity" "current" {}
+
+locals {
+  jwt_secret_ssm_arn            = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter${var.jwt_secret_ssm_name}"
+  football_data_api_key_ssm_arn = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter${var.football_data_api_key_ssm_name}"
 }
 
 # IAM Role for Lambda
@@ -68,6 +76,22 @@ resource "aws_iam_role_policy" "lambda_dynamodb" {
           "dynamodb:Query"
         ]
         Resource = var.dynamodb_table_arns
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "lambda_ssm" {
+  name = "ssm-secret-access"
+  role = aws_iam_role.lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["ssm:GetParameter"]
+        Resource = [local.jwt_secret_ssm_arn, local.football_data_api_key_ssm_arn]
       }
     ]
   })
@@ -135,10 +159,10 @@ resource "aws_lambda_function" "api" {
 
   environment {
     variables = {
-      TABLE_PREFIX          = var.table_prefix
-      AVATAR_BUCKET         = var.avatar_bucket_name
-      FOOTBALL_DATA_API_KEY = var.football_data_api_key
-      JWT_SECRET            = var.jwt_secret
+      TABLE_PREFIX                       = var.table_prefix
+      AVATAR_BUCKET                      = var.avatar_bucket_name
+      JWT_SECRET_SSM_NAME                = var.jwt_secret_ssm_name
+      FOOTBALL_DATA_API_KEY_SSM_NAME     = var.football_data_api_key_ssm_name
     }
   }
 
