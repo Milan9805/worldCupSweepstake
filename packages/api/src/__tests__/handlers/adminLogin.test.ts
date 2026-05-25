@@ -1,4 +1,4 @@
-import { handler, verifyAdminToken } from '../../handlers/adminLogin';
+import { handler, verifyAdminToken, _resetRateLimitForTests } from '../../handlers/adminLogin';
 import { APIGatewayProxyEvent } from 'aws-lambda';
 import * as db from '../../db/dynamodb';
 import * as bcrypt from 'bcryptjs';
@@ -12,7 +12,7 @@ const mockedDb = db as jest.Mocked<typeof db>;
 const mockedBcrypt = bcrypt as jest.Mocked<typeof bcrypt>;
 const mockedJwt = jwt as jest.Mocked<typeof jwt>;
 
-function makeEvent(overrides: Partial<APIGatewayProxyEvent> = {}): APIGatewayProxyEvent {
+function makeEvent(overrides: Partial<APIGatewayProxyEvent> = {}, ip = '1.2.3.4'): APIGatewayProxyEvent {
   return {
     httpMethod: 'POST',
     path: '/api/admin/login',
@@ -23,7 +23,7 @@ function makeEvent(overrides: Partial<APIGatewayProxyEvent> = {}): APIGatewayPro
     isBase64Encoded: false,
     resource: '',
     stageVariables: null,
-    requestContext: {} as APIGatewayProxyEvent['requestContext'],
+    requestContext: { identity: { sourceIp: ip } } as APIGatewayProxyEvent['requestContext'],
     multiValueHeaders: {},
     multiValueQueryStringParameters: null,
     ...overrides,
@@ -34,6 +34,7 @@ describe('adminLogin handler', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(console, 'error').mockImplementation(() => {});
+    _resetRateLimitForTests();
   });
 
   afterEach(() => {
@@ -98,6 +99,65 @@ describe('adminLogin handler', () => {
       'Access-Control-Allow-Headers': 'Content-Type,Authorization',
     });
   });
+
+  it('returns 429 after MAX_ATTEMPTS failed logins from the same IP', async () => {
+    mockedDb.getConfig.mockResolvedValue({ configKey: 'adminSecret', value: '$2a$10$hash' });
+    (mockedBcrypt.compare as jest.Mock).mockResolvedValue(false as never);
+
+    for (let i = 0; i < 5; i++) {
+      const result = await handler(makeEvent({ body: JSON.stringify({ secret: 'wrong' }) }));
+      expect(result.statusCode).toBe(401);
+    }
+
+    const blocked = await handler(makeEvent({ body: JSON.stringify({ secret: 'wrong' }) }));
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.headers).toMatchObject({ 'Retry-After': expect.any(String) });
+    expect(JSON.parse(blocked.body).error).toMatch(/too many/i);
+  });
+
+  it('tracks failed attempts per IP independently', async () => {
+    mockedDb.getConfig.mockResolvedValue({ configKey: 'adminSecret', value: '$2a$10$hash' });
+    (mockedBcrypt.compare as jest.Mock).mockResolvedValue(false as never);
+
+    for (let i = 0; i < 5; i++) {
+      await handler(makeEvent({ body: JSON.stringify({ secret: 'wrong' }) }, '1.1.1.1'));
+    }
+
+    const otherIp = await handler(makeEvent({ body: JSON.stringify({ secret: 'wrong' }) }, '2.2.2.2'));
+    expect(otherIp.statusCode).toBe(401);
+  });
+
+  it('clears rate-limit counter on successful login', async () => {
+    mockedDb.getConfig.mockResolvedValue({ configKey: 'adminSecret', value: '$2a$10$hash' });
+    (mockedBcrypt.compare as jest.Mock)
+      .mockResolvedValueOnce(false as never)
+      .mockResolvedValueOnce(false as never)
+      .mockResolvedValueOnce(true as never)
+      .mockResolvedValueOnce(false as never);
+    (mockedJwt.sign as jest.Mock).mockReturnValue('fake-token');
+
+    await handler(makeEvent({ body: JSON.stringify({ secret: 'wrong' }) }));
+    await handler(makeEvent({ body: JSON.stringify({ secret: 'wrong' }) }));
+    const ok = await handler(makeEvent({ body: JSON.stringify({ secret: 'right' }) }));
+    expect(ok.statusCode).toBe(200);
+
+    const next = await handler(makeEvent({ body: JSON.stringify({ secret: 'wrong' }) }));
+    expect(next.statusCode).toBe(401);
+  });
+
+  it('returns 500 if JWT_SECRET env var is missing', async () => {
+    mockedDb.getConfig.mockResolvedValue({ configKey: 'adminSecret', value: '$2a$10$hash' });
+    (mockedBcrypt.compare as jest.Mock).mockResolvedValue(true as never);
+    const original = process.env.JWT_SECRET;
+    delete process.env.JWT_SECRET;
+    try {
+      const result = await handler(makeEvent({ body: JSON.stringify({ secret: 'correct' }) }));
+      expect(result.statusCode).toBe(500);
+      expect(JSON.parse(result.body).error).toBe('Internal server error');
+    } finally {
+      process.env.JWT_SECRET = original;
+    }
+  });
 });
 
 describe('verifyAdminToken', () => {
@@ -120,5 +180,15 @@ describe('verifyAdminToken', () => {
       throw new Error('invalid token');
     });
     expect(verifyAdminToken('invalid-token')).toBe(false);
+  });
+
+  it('returns false if JWT_SECRET is unset', () => {
+    const original = process.env.JWT_SECRET;
+    delete process.env.JWT_SECRET;
+    try {
+      expect(verifyAdminToken('any-token')).toBe(false);
+    } finally {
+      process.env.JWT_SECRET = original;
+    }
   });
 });

@@ -3,10 +3,65 @@ import { getConfig } from '../db/dynamodb';
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable is not set');
+  }
+  return secret;
+}
+
+const MAX_ATTEMPTS = 5;
+const WINDOW_MS = 15 * 60 * 1000;
+
+interface AttemptRecord {
+  failures: number;
+  firstFailureAt: number;
+}
+
+const attempts = new Map<string, AttemptRecord>();
+
+function sourceIp(event: APIGatewayProxyEvent): string {
+  return event.requestContext?.identity?.sourceIp || 'unknown';
+}
+
+function checkRateLimit(ip: string, now: number): { allowed: true } | { allowed: false; retryAfterSeconds: number } {
+  const record = attempts.get(ip);
+  if (!record || now - record.firstFailureAt > WINDOW_MS) {
+    return { allowed: true };
+  }
+  if (record.failures >= MAX_ATTEMPTS) {
+    return { allowed: false, retryAfterSeconds: Math.ceil((WINDOW_MS - (now - record.firstFailureAt)) / 1000) };
+  }
+  return { allowed: true };
+}
+
+function recordFailure(ip: string, now: number): void {
+  const record = attempts.get(ip);
+  if (!record || now - record.firstFailureAt > WINDOW_MS) {
+    attempts.set(ip, { failures: 1, firstFailureAt: now });
+  } else {
+    record.failures += 1;
+  }
+}
+
+export function _resetRateLimitForTests(): void {
+  attempts.clear();
+}
 
 export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
   try {
+    const ip = sourceIp(event);
+    const now = Date.now();
+    const rate = checkRateLimit(ip, now);
+    if (!rate.allowed) {
+      return {
+        statusCode: 429,
+        headers: { ...corsHeaders(), 'Retry-After': String(rate.retryAfterSeconds) },
+        body: JSON.stringify({ success: false, error: 'Too many login attempts. Try again later.' }),
+      };
+    }
+
     const body = JSON.parse(event.body || '{}');
     const { secret } = body;
 
@@ -29,6 +84,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
     const isValid = await bcrypt.compare(secret, config.value);
     if (!isValid) {
+      recordFailure(ip, now);
       return {
         statusCode: 401,
         headers: corsHeaders(),
@@ -36,7 +92,8 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       };
     }
 
-    const token = jwt.sign({ role: 'admin' }, JWT_SECRET, { expiresIn: '24h' });
+    attempts.delete(ip);
+    const token = jwt.sign({ role: 'admin' }, getJwtSecret(), { expiresIn: '24h' });
 
     return {
       statusCode: 200,
@@ -55,7 +112,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
 export function verifyAdminToken(token: string): boolean {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as { role: string };
+    const decoded = jwt.verify(token, getJwtSecret()) as { role: string };
     return decoded.role === 'admin';
   } catch {
     return false;
