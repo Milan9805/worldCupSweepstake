@@ -35,7 +35,7 @@ describe('Leaderboard', () => {
   it('shows teams alive and best stage', () => {
     const entries = [makeEntry({ teamsAlive: 2, totalTeams: 3, bestStage: 'Still Active' })];
     render(<Leaderboard entries={entries} />);
-    expect(screen.getByText(/2\/3 alive/)).toBeInTheDocument();
+    expect(screen.getByText(/2\/3 remaining/)).toBeInTheDocument();
     expect(screen.getByText(/Still Active/)).toBeInTheDocument();
   });
 

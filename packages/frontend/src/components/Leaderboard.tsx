@@ -33,7 +33,7 @@ export default function Leaderboard({ entries }: LeaderboardProps) {
             <div className="flex-1">
               <div className="font-medium text-sm text-white">{entry.name}</div>
               <div className="text-xs text-white/70">
-                {entry.teamsAlive}/{entry.totalTeams} alive •{' '}
+                {entry.teamsAlive}/{entry.totalTeams} remaining •{' '}
                 {entry.bestStage}
               </div>
             </div>
