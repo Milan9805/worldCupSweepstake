@@ -12,3 +12,5 @@ out/
 .terraform/
 coverage/
 .DS_Store
+playwright-report
+test-results
