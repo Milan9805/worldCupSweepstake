@@ -2,10 +2,12 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { RefreshResponse } from '@sweepstake/shared';
 import { useRefresh } from '@/hooks/useRefresh';
 
 interface NavBarProps {
   groupName?: string;
+  onRefreshed?: (result: RefreshResponse) => void;
 }
 
 const NAV_LINKS = [
@@ -15,8 +17,8 @@ const NAV_LINKS = [
   { href: '/admin', label: 'Admin' },
 ];
 
-export default function NavBar({ groupName }: NavBarProps) {
-  const { refresh, isRefreshing, source } = useRefresh();
+export default function NavBar({ groupName, onRefreshed }: NavBarProps) {
+  const { refresh, isRefreshing, source } = useRefresh(onRefreshed);
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (

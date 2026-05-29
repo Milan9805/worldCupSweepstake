@@ -1,3 +1,5 @@
+import { RefreshResponse } from '@sweepstake/shared';
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
@@ -35,12 +37,7 @@ export async function getTree() {
 }
 
 export async function refreshScores() {
-  return fetchApi<{
-    matches: unknown[];
-    teams: unknown[];
-    source?: 'api' | 'bbc' | 'cache';
-    refreshedAt?: string;
-  }>('/api/refresh', { method: 'POST' });
+  return fetchApi<RefreshResponse>('/api/refresh', { method: 'POST' });
 }
 
 export async function adminLogin(secret: string) {

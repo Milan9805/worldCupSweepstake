@@ -2,14 +2,17 @@ import { refreshData } from '../../services/refresh';
 import * as db from '../../db/dynamodb';
 import * as footballData from '../../clients/footballData';
 import * as bbcScraper from '../../clients/bbcScraper';
+import * as tvScraper from '../../clients/footballTvScraper';
 
 jest.mock('../../db/dynamodb');
 jest.mock('../../clients/footballData');
 jest.mock('../../clients/bbcScraper');
+jest.mock('../../clients/footballTvScraper');
 
 const mockedDb = db as jest.Mocked<typeof db>;
 const mockedFootballData = footballData as jest.Mocked<typeof footballData>;
 const mockedBbc = bbcScraper as jest.Mocked<typeof bbcScraper>;
+const mockedTv = tvScraper as jest.Mocked<typeof tvScraper>;
 
 const NOW = 1700000000000;
 
@@ -19,6 +22,9 @@ describe('refreshData', () => {
     jest.spyOn(Date, 'now').mockReturnValue(NOW);
     jest.spyOn(console, 'error').mockImplementation(() => {});
     jest.spyOn(console, 'warn').mockImplementation(() => {});
+    // Default: channel enrichment is a no-op unless a test opts in.
+    mockedTv.fetchTvListings.mockResolvedValue([]);
+    mockedTv.buildChannelPatches.mockReturnValue([]);
   });
 
   afterEach(() => {
@@ -156,6 +162,100 @@ describe('refreshData', () => {
       expect(result.source).toBe('cache');
       expect(result.matches).toEqual(cached);
       expect(mockedDb.putConfig).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('TV channel enrichment', () => {
+    const ITV1 = { name: 'ITV1', bg: '#127b60', fg: '#fff' };
+    const STV = { name: 'STV', bg: '#032baa', fg: '#fafafa' };
+    const existing = [
+      {
+        matchId: 'm1',
+        homeTeam: 'MEX',
+        awayTeam: 'RSA',
+        homeScore: null,
+        awayScore: null,
+        status: 'SCHEDULED',
+        stage: 'GROUP_STAGE',
+        group: 'A',
+        datetime: '2026-06-11T19:00:00Z',
+        venue: 'Estadio Azteca',
+        channels: [ITV1],
+      },
+    ];
+
+    beforeEach(() => {
+      mockedDb.getConfig.mockResolvedValue(undefined);
+      mockedFootballData.fetchMatches.mockResolvedValue([]);
+      mockedDb.getAllMatches.mockResolvedValue(existing);
+      mockedDb.getAllTeams.mockResolvedValue([]);
+    });
+
+    it('applies channel patches to matched matches', async () => {
+      mockedTv.fetchTvListings.mockResolvedValue([
+        { homeTeam: 'MEX', awayTeam: 'RSA', date: '2026-06-11', channels: [ITV1, STV] },
+      ]);
+      mockedTv.buildChannelPatches.mockReturnValue([{ matchId: 'm1', channels: [ITV1, STV] }]);
+
+      await refreshData();
+
+      expect(mockedDb.putMatch).toHaveBeenCalledWith({
+        ...existing[0],
+        channels: [ITV1, STV],
+      });
+    });
+
+    it('skips a redundant write when channels are unchanged', async () => {
+      mockedTv.buildChannelPatches.mockReturnValue([{ matchId: 'm1', channels: [ITV1] }]);
+
+      await refreshData();
+
+      // existing[0] already has channels [ITV1] — no putMatch for the patch.
+      expect(mockedDb.putMatch).not.toHaveBeenCalledWith(
+        expect.objectContaining({ matchId: 'm1', channels: [ITV1] }),
+      );
+    });
+
+    it('writes when the match has no channels yet', async () => {
+      const unenriched = [{ ...existing[0], channels: undefined }];
+      mockedDb.getAllMatches.mockResolvedValue(unenriched);
+      mockedTv.buildChannelPatches.mockReturnValue([{ matchId: 'm1', channels: [ITV1] }]);
+
+      await refreshData();
+
+      expect(mockedDb.putMatch).toHaveBeenCalledWith({ ...unenriched[0], channels: [ITV1] });
+    });
+
+    it('treats an undefined patch channel list as equal to no channels (no write)', async () => {
+      const unenriched = [{ ...existing[0], channels: undefined }];
+      mockedDb.getAllMatches.mockResolvedValue(unenriched);
+      mockedTv.buildChannelPatches.mockReturnValue([{ matchId: 'm1', channels: undefined }]);
+
+      await refreshData();
+
+      expect(mockedDb.putMatch).not.toHaveBeenCalled();
+    });
+
+    it('skips a patch whose matchId has no matching row', async () => {
+      mockedTv.buildChannelPatches.mockReturnValue([
+        { matchId: 'ghost', channels: [{ name: 'BBC One', bg: '#ea2823', fg: '#fff' }] },
+      ]);
+
+      await refreshData();
+
+      expect(mockedDb.putMatch).not.toHaveBeenCalled();
+    });
+
+    it('swallows a TV scrape failure without breaking the refresh', async () => {
+      mockedTv.fetchTvListings.mockRejectedValue(new Error('TV site down'));
+
+      const result = await refreshData();
+
+      expect(result.source).toBe('api');
+      expect(console.warn).toHaveBeenCalledWith(
+        'Football-on-TV channel scrape failed:',
+        expect.any(Error),
+      );
     });
   });
 });

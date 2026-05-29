@@ -18,7 +18,12 @@ describe('useRefresh', () => {
   });
 
   it('refresh calls API and updates lastRefresh', async () => {
-    mockedApi.refreshScores.mockResolvedValue({ matches: [], teams: [] });
+    mockedApi.refreshScores.mockResolvedValue({
+      matches: [],
+      teams: [],
+      source: 'api',
+      refreshedAt: '2026-06-11T00:00:00Z',
+    });
 
     const { result } = renderHook(() => useRefresh());
 
@@ -29,6 +34,35 @@ describe('useRefresh', () => {
     expect(mockedApi.refreshScores).toHaveBeenCalled();
     expect(result.current.isRefreshing).toBe(false);
     expect(result.current.lastRefresh).toBeInstanceOf(Date);
+  });
+
+  it('invokes onRefreshed with the API result', async () => {
+    const refreshResult = { matches: [{ matchId: '1' }], teams: [{ teamCode: 'ENG' }] };
+    mockedApi.refreshScores.mockResolvedValue(refreshResult as never);
+    const onRefreshed = jest.fn();
+
+    const { result } = renderHook(() => useRefresh(onRefreshed));
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    expect(onRefreshed).toHaveBeenCalledWith(refreshResult);
+  });
+
+  it('does not invoke onRefreshed when the refresh fails', async () => {
+    mockedApi.refreshScores.mockRejectedValue(new Error('API down'));
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+    const onRefreshed = jest.fn();
+
+    const { result } = renderHook(() => useRefresh(onRefreshed));
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    expect(onRefreshed).not.toHaveBeenCalled();
+    consoleSpy.mockRestore();
   });
 
   it('handles refresh error gracefully', async () => {
@@ -50,8 +84,9 @@ describe('useRefresh', () => {
     let resolveRefresh: () => void;
     mockedApi.refreshScores.mockImplementation(
       () =>
-        new Promise<{ matches: unknown[]; teams: unknown[] }>((resolve) => {
-          resolveRefresh = () => resolve({ matches: [], teams: [] });
+        new Promise((resolve) => {
+          resolveRefresh = () =>
+            resolve({ matches: [], teams: [], source: 'api', refreshedAt: '' });
         }),
     );
 

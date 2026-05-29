@@ -41,6 +41,18 @@ export interface Group {
 // ===== Match =====
 export type MatchStatus = 'SCHEDULED' | 'LIVE' | 'FINISHED';
 
+/**
+ * A broadcast channel for a match, with the brand colours scraped verbatim from
+ * the source listings so the UI stays correct as broadcasters/colours change.
+ * `bg` / `fg` are raw CSS colour strings (e.g. "#127b60", "rgba(255,255,255,1)")
+ * and may be empty when the source omits them.
+ */
+export interface ChannelBroadcast {
+  name: string;
+  bg: string;
+  fg: string;
+}
+
 export interface Match {
   matchId: string;
   homeTeam: string; // teamCode
@@ -52,6 +64,7 @@ export interface Match {
   group: string | null; // group letter for group stage matches
   datetime: string; // ISO 8601
   venue: string;
+  channels?: ChannelBroadcast[]; // UK broadcast channels with brand colours
 }
 
 // ===== Tournament Tree =====

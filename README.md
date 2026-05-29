@@ -1,6 +1,8 @@
 # FIFA World Cup 2026 Sweepstake
 
-A serverless web application for managing sweepstake groups during the FIFA 2026 Men's World Cup. Features per-person dashboards, group stage tables, a tournament bracket, and an admin panel.
+A serverless web application for managing sweepstake groups during the FIFA
+2026 Men's World Cup. Features per-person dashboards, group stage tables, a
+tournament bracket, and an admin panel.
 
 ## Architecture
 
@@ -24,7 +26,9 @@ A serverless web application for managing sweepstake groups during the FIFA 2026
 npm run start:local
 ```
 
-This starts DynamoDB Local, seeds the database, launches the API server, and starts the frontend. Open http://localhost:3000 and enter a group key (e.g., `lads-on-tour`).
+This starts DynamoDB Local, seeds the database, launches the API server, and
+starts the frontend. Open <http://localhost:3000> and enter a group key
+(e.g., `lads-on-tour`).
 
 ### Manual Setup (step by step)
 
@@ -49,6 +53,7 @@ npx ts-node scripts/seed.ts
 ```
 
 This creates the DynamoDB tables and seeds them with:
+
 - 2 sweepstake groups with 6 members each
 - 48 World Cup teams across 12 groups
 - Sample match fixtures with some results
@@ -56,7 +61,7 @@ This creates the DynamoDB tables and seeds them with:
 **Test credentials created by the seed script:**
 
 | Item | Value |
-|------|-------|
+| ------ | ------- |
 | Group Key 1 | `lads-on-tour` |
 | Group Key 2 | `office-sweepstake` |
 | Admin Secret | `sweepstake-admin-2026` |
@@ -67,7 +72,8 @@ This creates the DynamoDB tables and seeds them with:
 npm run api:local
 ```
 
-The API runs on http://localhost:3001. It connects to DynamoDB Local automatically.
+The API runs on <http://localhost:3001>. It connects to DynamoDB Local
+automatically.
 
 ### 5. Start the frontend
 
@@ -77,11 +83,13 @@ In a separate terminal:
 npm run dev
 ```
 
-The frontend runs on http://localhost:3000 and proxies API calls to localhost:3001.
+The frontend runs on <http://localhost:3000> and proxies API calls to
+localhost:3001.
 
 ### 6. Open the app
 
-Navigate to http://localhost:3000 and enter one of the group keys (e.g., `lads-on-tour`).
+Navigate to <http://localhost:3000> and enter one of the group keys
+(e.g., `lads-on-tour`).
 
 ### 7. Stop everything
 
@@ -118,7 +126,7 @@ npm run test:e2e
 
 ## Project Structure
 
-```
+```text
 sweepstake/
 ├── packages/
 │   ├── frontend/          — Next.js app (static export)
@@ -149,16 +157,18 @@ sweepstake/
 ## API Endpoints
 
 | Method | Path | Description |
-|--------|------|-------------|
+| -------- | ------ | ------------- |
 | GET | `/api/group/:key` | Get group data by key |
 | GET | `/api/matches` | Get all matches |
 | GET | `/api/teams` | Get all teams with stats |
 | GET | `/api/bracket` | Get tournament bracket |
-| POST | `/api/refresh` | Refresh scores from football-data.org (falls back to BBC). Returns `{ matches, teams, source, refreshedAt }` |
+| POST | `/api/refresh` | Refresh scores + TV channels (BBC fallback) |
 | POST | `/api/admin/login` | Admin authentication |
 | POST | `/api/admin/members` | Update group members |
 | POST | `/api/admin/assign` | Assign teams to people |
 | POST | `/api/admin/upload-avatar` | Get presigned upload URL |
+
+The refresh response is `{ matches, teams, source, refreshedAt }`.
 
 ## Pages
 
@@ -170,7 +180,7 @@ sweepstake/
 
 ## Deploying to AWS
 
-### Prerequisites
+### Requirements
 
 - AWS account with appropriate IAM permissions
 - Terraform >= 1.5
@@ -208,21 +218,23 @@ cp .env.example .env
 ```
 
 | Variable | Description | Default |
-|----------|-------------|---------|
+| ---------- | ------------- | --------- |
 | `NEXT_PUBLIC_API_URL` | API base URL for frontend | `http://localhost:3001` |
 | `IS_LOCAL` | Use local DynamoDB endpoint | `true` |
 | `TABLE_PREFIX` | DynamoDB table name prefix | (empty) |
-| `JWT_SECRET` | Secret for admin JWT tokens | `dev-secret-change-in-production` |
+| `JWT_SECRET` | Admin JWT signing secret | `dev-secret-change-in-production` |
 | `FOOTBALL_DATA_API_KEY` | football-data.org API key | (required for refresh) |
 | `PORT` | API server port | `3001` |
 
 ## Football Data API Setup
 
-The app fetches live scores and fixtures from [football-data.org](https://www.football-data.org/) (v4 API).
+The app fetches live scores and fixtures from
+[football-data.org](https://www.football-data.org/) (v4 API).
 
 ### 1. Register for an API key
 
-Sign up at https://www.football-data.org/client/register. The **free tier** allows 10 requests/minute and includes World Cup data.
+Sign up at <https://www.football-data.org/client/register>. The **free tier**
+allows 10 requests/minute and includes World Cup data.
 
 ### 2. Set the environment variable
 
@@ -240,10 +252,16 @@ terraform apply -var="football_data_api_key=YOUR_KEY" -var="jwt_secret=YOUR_SECR
 
 ### 3. How it works
 
-- The `POST /api/refresh` endpoint fetches all matches for the configured competition from football-data.org
+- The `POST /api/refresh` endpoint fetches all matches for the configured
+  competition from football-data.org
 - Match scores, statuses, and fixtures are merged into DynamoDB
-- A 20-second cooldown is enforced server-side (one refresh per 20s globally, regardless of how many users click), well within the free tier's 10/min limit
-- The competition ID is configured in `packages/api/src/clients/footballData.ts` as `2000` (football-data.org's persistent ID for the FIFA World Cup; the current season under that ID is the 2026 edition)
+- A 20-second cooldown is enforced server-side (one refresh per 20s globally,
+  regardless of how many users click), well within the free tier's 10/min
+  limit
+- The competition ID is configured in
+  `packages/api/src/clients/footballData.ts` as `2000` (football-data.org's
+  persistent ID for the FIFA World Cup; the current season under that ID is
+  the 2026 edition)
 
 ### 4. What it provides
 
@@ -255,44 +273,95 @@ terraform apply -var="football_data_api_key=YOUR_KEY" -var="jwt_secret=YOUR_SECR
 ### 5. Rate limits
 
 | Plan | Requests/minute |
-|------|----------------|
+| ------ | ---------------- |
 | Free | 10 |
 | Standard | 30 |
 | Advanced | 60 |
 
 ## BBC Scraper Fallback
 
-If the football-data.org call fails (rate limit, outage, expired key, etc.), `/api/refresh` automatically falls back to scraping BBC's World Cup fixture pages for live scores. The response includes a `source` field so callers know which path was used:
+If the football-data.org call fails (rate limit, outage, expired key, etc.),
+`/api/refresh` automatically falls back to scraping BBC's World Cup fixture
+pages for live scores. The response includes a `source` field so callers know
+which path was used:
 
 | `source` | Meaning |
-|----------|---------|
+| ---------- | --------- |
 | `api` | football-data.org returned fresh data |
 | `bbc` | football-data.org failed; scores came from BBC |
-| `cache` | within the 20s cooldown, or both sources failed — returning whatever's in DynamoDB |
+| `cache` | within cooldown, or both sources failed — returns DynamoDB state |
 
-When `source === 'bbc'`, the navbar shows an amber **"via BBC"** badge next to the Refresh button.
+When `source === 'bbc'`, the navbar shows an amber **"via BBC"** badge next to
+the Refresh button.
 
 ### Lifecycle constraint
 
-The BBC fallback **only patches `homeScore`, `awayScore`, and `status` on matches that already exist in DynamoDB**. It never creates new rows. That means football-data.org (or seed data) must have populated the fixtures table at least once with the correct `stage`, `group`, `datetime`, and team TLAs before BBC can do anything useful. Fixtures BBC reports that don't correspond to an existing row are silently dropped, as are knockout placeholders ("TBC" / "Winner Group A" etc.).
+The BBC fallback **only patches `homeScore`, `awayScore`, and `status` on
+matches that already exist in DynamoDB**. It never creates new rows. That means
+football-data.org (or seed data) must have populated the fixtures table at
+least once with the correct `stage`, `group`, `datetime`, and team TLAs before
+BBC can do anything useful. Fixtures BBC reports that don't correspond to an
+existing row are silently dropped, as are knockout placeholders ("TBC" /
+"Winner Group A" etc.).
 
 ### How it works
 
-BBC's fixture pages are a client-rendered SPA, but they server-render a JSON hydration blob into `window.__INITIAL_DATA__`. The scraper extracts that blob, walks `data["sport-data-scores-fixtures..."].data.eventGroups[].secondaryGroups[].events[]`, and maps each event's team `fullName` to a TLA via [`packages/shared/src/teamNames.ts`](packages/shared/src/teamNames.ts). Both `2026-06` and `2026-07` pages are fetched in parallel and deduped by `(homeTLA, awayTLA, date)`.
+BBC's fixture pages are a client-rendered SPA, but they server-render a JSON
+hydration blob into `window.__INITIAL_DATA__`. The scraper extracts that blob,
+walks
+`data["sport-data-scores-fixtures..."].data.eventGroups[].secondaryGroups[].events[]`,
+and maps each event's team `fullName` to a TLA via
+[`packages/shared/src/teamNames.ts`](packages/shared/src/teamNames.ts). Both
+`2026-06` and `2026-07` pages are fetched in parallel and deduped by
+`(homeTLA, awayTLA, date)`.
 
 ### Verifying the fallback locally
 
 ```bash
-# Temporarily set an invalid API key (or unset FOOTBALL_DATA_API_KEY and restart api:local)
-# Then click Refresh in the UI, or:
+# Temporarily set an invalid API key (or unset FOOTBALL_DATA_API_KEY and
+# restart api:local). Then click Refresh in the UI, or:
 curl -s -X POST http://localhost:3001/api/refresh | jq '.data.source'
 # → "bbc"
 ```
 
+## TV Channel Listings
+
+`/api/refresh` also enriches matches with the UK broadcast channels showing
+each game, scraped from
+[live-footballontv.com](https://www.live-footballontv.com/live-world-cup-football-on-tv.html).
+The channels are stored on `Match.channels` as `{ name, bg, fg }` objects —
+each carrying the broadcaster's brand colours scraped verbatim from the source
+(e.g. `{ name: "ITV1", bg: "#127b60", fg: "rgba(255,255,255,1)" }`) — and
+rendered as colour-coded pills under each fixture in the `MatchList` component.
+
+### How channel scraping works
+
+The site server-renders fixtures as a flat list of sibling `<div>`s: a
+`fixture-date` header sets the current day, then each `fixture` block carries
+`fixture__time`, `fixture__teams` ("Mexico v South Africa"),
+`fixture__competition`, and a set of `channel-pill` spans. The scraper
+([`packages/api/src/clients/footballTvScraper.ts`](packages/api/src/clients/footballTvScraper.ts))
+walks these tokens in document order, maps each team name to a TLA via
+[`packages/shared/src/teamNames.ts`](packages/shared/src/teamNames.ts), and
+collects each channel pill's name and inline brand colours. Storing the colours
+verbatim keeps the UI correct with no hardcoded colour map, even as
+broadcasters change.
+
+### Channel scrape constraints
+
+The channel scrape is an **independent, best-effort step**: the channel source
+is unrelated to scores, so a failure is logged and never blocks a score
+refresh. Like the BBC fallback, it **only patches existing matches** (matched
+by unordered team pair) and never creates rows. Redundant writes are skipped
+when the channel list is unchanged.
+
 ## Key Design Decisions
 
-- **Winner takes all**: The person whose team wins the final wins the sweepstake
-- **Manual refresh**: No real-time updates; user-triggered refresh button with a 20s global cooldown. football-data.org is primary; BBC scraping is the automatic fallback when the API errors
+- **Winner takes all**: The person whose team wins the final wins the
+  sweepstake
+- **Manual refresh**: No real-time updates; user-triggered refresh button with
+  a 20s global cooldown. football-data.org is primary; BBC scraping is the
+  automatic fallback when the API errors
 - **Static export**: Frontend is pure static HTML/JS served from S3/CloudFront
 - **Shared group key**: Simple passphrase per group, no user accounts
 - **Admin auth**: Separate bcrypt-hashed secret, independent of group keys

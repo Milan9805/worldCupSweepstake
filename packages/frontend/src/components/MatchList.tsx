@@ -7,6 +7,10 @@ interface MatchListProps {
   teamOwners?: Record<string, { name: string; imageUrl: string | null }>;
 }
 
+// Fallbacks for when the source omits a channel's colours.
+const DEFAULT_CHANNEL_BG = '#374151';
+const DEFAULT_CHANNEL_FG = '#ffffff';
+
 export default function MatchList({ matches, teamOwners }: MatchListProps) {
   const formatDate = (datetime: string) => {
     const date = new Date(datetime);
@@ -51,8 +55,9 @@ export default function MatchList({ matches, teamOwners }: MatchListProps) {
       {matches.map((match) => (
         <div
           key={match.matchId}
-          className="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-all"
+          className="flex flex-col gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-all"
         >
+          <div className="flex items-center gap-3">
           <div className="text-xs text-white/70 w-20 text-center">
             <div>{formatDate(match.datetime)}</div>
             <div>{formatTime(match.datetime)}</div>
@@ -101,6 +106,24 @@ export default function MatchList({ matches, teamOwners }: MatchListProps) {
           <div className="w-20 text-right text-xs">
             {statusBadge(match.status)}
           </div>
+          </div>
+
+          {match.channels && match.channels.length > 0 && (
+            <div className="flex flex-wrap gap-1 justify-center">
+              {match.channels.map((channel) => (
+                <span
+                  key={channel.name}
+                  style={{
+                    backgroundColor: channel.bg || DEFAULT_CHANNEL_BG,
+                    color: channel.fg || DEFAULT_CHANNEL_FG,
+                  }}
+                  className="text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-sm"
+                >
+                  {channel.name}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       ))}
     </div>

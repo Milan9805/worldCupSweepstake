@@ -70,7 +70,13 @@ export default function GroupsPage() {
 
   return (
     <div className="min-h-screen">
-      <NavBar groupName={group?.groupName} />
+      <NavBar
+        groupName={group?.groupName}
+        onRefreshed={(result) => {
+          setMatches(result.matches);
+          setTeams(result.teams);
+        }}
+      />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <h1 className="text-2xl font-bold mb-6">Group Stages</h1>
 

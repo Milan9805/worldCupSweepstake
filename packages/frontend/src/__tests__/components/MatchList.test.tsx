@@ -82,4 +82,53 @@ describe('MatchList', () => {
     expect(screen.getByText('Alice')).toBeInTheDocument();
     expect(screen.getByText('Bob')).toBeInTheDocument();
   });
+
+  it('renders broadcast channel pills when channels are present', () => {
+    const matches = [
+      makeMatch({
+        channels: [
+          { name: 'ITV1', bg: '#127b60', fg: 'rgba(255, 255, 255, 1.0)' },
+          { name: 'STV', bg: '#032baa', fg: '#fafafa' },
+          { name: 'ITVX', bg: '#102c3e', fg: '#deeb52' },
+        ],
+      }),
+    ];
+    render(<MatchList matches={matches} />);
+    expect(screen.getByText('ITV1')).toBeInTheDocument();
+    expect(screen.getByText('STV')).toBeInTheDocument();
+    expect(screen.getByText('ITVX')).toBeInTheDocument();
+  });
+
+  it('applies each channel’s scraped brand colours', () => {
+    const matches = [
+      makeMatch({
+        channels: [
+          { name: 'ITV1', bg: '#127b60', fg: 'rgba(255, 255, 255, 1.0)' },
+          { name: 'ITVX', bg: '#102c3e', fg: '#deeb52' },
+        ],
+      }),
+    ];
+    render(<MatchList matches={matches} />);
+    expect(screen.getByText('ITV1')).toHaveStyle({
+      backgroundColor: '#127b60',
+      color: 'rgba(255, 255, 255, 1.0)',
+    });
+    expect(screen.getByText('ITVX')).toHaveStyle({ backgroundColor: '#102c3e', color: '#deeb52' });
+  });
+
+  it('falls back to default colours when a channel has none', () => {
+    const matches = [makeMatch({ channels: [{ name: 'Mystery TV', bg: '', fg: '' }] })];
+    render(<MatchList matches={matches} />);
+    expect(screen.getByText('Mystery TV')).toHaveStyle({
+      backgroundColor: '#374151',
+      color: '#ffffff',
+    });
+  });
+
+  it('renders no channel pills when channels are absent or empty', () => {
+    const { rerender } = render(<MatchList matches={[makeMatch()]} />);
+    expect(screen.queryByText('ITV1')).not.toBeInTheDocument();
+    rerender(<MatchList matches={[makeMatch({ channels: [] })]} />);
+    expect(screen.queryByText('ITV1')).not.toBeInTheDocument();
+  });
 });
