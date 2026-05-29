@@ -102,6 +102,7 @@ describe('AdminPage', () => {
 
   it('saves members to API', async () => {
     mockedApi.adminLogin.mockResolvedValue({ token: 'test-token' });
+    mockedApi.getGroup.mockResolvedValue({ groupKey: 'my-group', groupName: 'My Group', members: [] });
     mockedApi.adminUpdateMembers.mockResolvedValue(undefined);
 
     render(<AdminPage />);
@@ -125,6 +126,37 @@ describe('AdminPage', () => {
         'test-token',
         'my-group',
         [{ name: 'Alice', imageUrl: null, teams: [] }]
+      );
+    });
+  });
+
+  it('preserves existing imageUrl and teams when saving members', async () => {
+    mockedApi.adminLogin.mockResolvedValue({ token: 'test-token' });
+    mockedApi.getGroup.mockResolvedValue({
+      groupKey: 'my-group',
+      groupName: 'My Group',
+      members: [{ name: 'Alice', imageUrl: 'https://img.url/alice.png', teams: ['ENG'] }],
+    });
+    mockedApi.adminUpdateMembers.mockResolvedValue(undefined);
+
+    render(<AdminPage />);
+    fireEvent.change(screen.getByPlaceholderText('Enter admin secret...'), { target: { value: 'secret' } });
+    fireEvent.submit(screen.getByPlaceholderText('Enter admin secret...').closest('form')!);
+
+    await waitFor(() => {
+      expect(screen.getByText('Manage Group Members')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText('Group key...'), { target: { value: 'my-group' } });
+    fireEvent.change(screen.getByPlaceholderText('Member name...'), { target: { value: 'Alice' } });
+    fireEvent.click(screen.getByText('Add'));
+    fireEvent.click(screen.getByText('Save Members'));
+
+    await waitFor(() => {
+      expect(mockedApi.adminUpdateMembers).toHaveBeenCalledWith(
+        'test-token',
+        'my-group',
+        [{ name: 'Alice', imageUrl: 'https://img.url/alice.png', teams: ['ENG'] }]
       );
     });
   });
@@ -204,6 +236,7 @@ describe('AdminPage', () => {
 
   it('handles save members error', async () => {
     mockedApi.adminLogin.mockResolvedValue({ token: 'test-token' });
+    mockedApi.getGroup.mockResolvedValue({ groupKey: 'grp', groupName: 'Grp', members: [] });
     mockedApi.adminUpdateMembers.mockRejectedValue(new Error('Save failed'));
 
     render(<AdminPage />);
@@ -227,6 +260,12 @@ describe('AdminPage', () => {
   it('uploads avatar successfully', async () => {
     mockedApi.adminLogin.mockResolvedValue({ token: 'test-token' });
     mockedApi.adminGetUploadUrl.mockResolvedValue({ uploadUrl: 'https://upload.url', imageUrl: 'https://img.url' });
+    mockedApi.getGroup.mockResolvedValue({
+      groupKey: 'grp',
+      groupName: 'Grp',
+      members: [{ name: 'Alice', imageUrl: null, teams: ['ENG'] }],
+    });
+    mockedApi.adminUpdateMembers.mockResolvedValue(undefined);
     global.fetch = jest.fn().mockResolvedValue({ ok: true });
 
     render(<AdminPage />);
@@ -254,6 +293,76 @@ describe('AdminPage', () => {
     await waitFor(() => {
       expect(mockedApi.adminGetUploadUrl).toHaveBeenCalledWith('test-token', 'grp', 'Alice', 'image/png');
     });
+    // The uploaded imageUrl is persisted onto the matching member
+    await waitFor(() => {
+      expect(mockedApi.adminUpdateMembers).toHaveBeenCalledWith(
+        'test-token',
+        'grp',
+        [{ name: 'Alice', imageUrl: 'https://img.url', teams: ['ENG'] }]
+      );
+    });
+    expect(screen.getByText(/Avatar uploaded and saved for Alice/)).toBeInTheDocument();
+  });
+
+  it('does not persist when the storage upload fails', async () => {
+    mockedApi.adminLogin.mockResolvedValue({ token: 'test-token' });
+    mockedApi.adminGetUploadUrl.mockResolvedValue({ uploadUrl: 'https://upload.url', imageUrl: 'https://img.url' });
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 403 });
+
+    render(<AdminPage />);
+    fireEvent.change(screen.getByPlaceholderText('Enter admin secret...'), { target: { value: 'secret' } });
+    fireEvent.submit(screen.getByPlaceholderText('Enter admin secret...').closest('form')!);
+
+    await waitFor(() => {
+      expect(screen.getByText('avatars')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('avatars'));
+
+    const groupKeyInputs = screen.getAllByPlaceholderText('Group key...');
+    fireEvent.change(groupKeyInputs[groupKeyInputs.length - 1], { target: { value: 'grp' } });
+    fireEvent.change(screen.getByPlaceholderText('Person name...'), { target: { value: 'Alice' } });
+    const file = new File(['image'], 'avatar.png', { type: 'image/png' });
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    Object.defineProperty(fileInput, 'files', { value: [file] });
+    fireEvent.change(fileInput);
+
+    fireEvent.click(screen.getByText('Upload'));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Error: Upload to storage failed \(403\)/)).toBeInTheDocument();
+    });
+    expect(mockedApi.adminUpdateMembers).not.toHaveBeenCalled();
+  });
+
+  it('warns when the avatar person is not a member', async () => {
+    mockedApi.adminLogin.mockResolvedValue({ token: 'test-token' });
+    mockedApi.adminGetUploadUrl.mockResolvedValue({ uploadUrl: 'https://upload.url', imageUrl: 'https://img.url' });
+    mockedApi.getGroup.mockResolvedValue({ groupKey: 'grp', groupName: 'Grp', members: [] });
+    global.fetch = jest.fn().mockResolvedValue({ ok: true });
+
+    render(<AdminPage />);
+    fireEvent.change(screen.getByPlaceholderText('Enter admin secret...'), { target: { value: 'secret' } });
+    fireEvent.submit(screen.getByPlaceholderText('Enter admin secret...').closest('form')!);
+
+    await waitFor(() => {
+      expect(screen.getByText('avatars')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('avatars'));
+
+    const groupKeyInputs = screen.getAllByPlaceholderText('Group key...');
+    fireEvent.change(groupKeyInputs[groupKeyInputs.length - 1], { target: { value: 'grp' } });
+    fireEvent.change(screen.getByPlaceholderText('Person name...'), { target: { value: 'Ghost' } });
+    const file = new File(['image'], 'avatar.png', { type: 'image/png' });
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    Object.defineProperty(fileInput, 'files', { value: [file] });
+    fireEvent.change(fileInput);
+
+    fireEvent.click(screen.getByText('Upload'));
+
+    await waitFor(() => {
+      expect(screen.getByText(/no member named "Ghost"/)).toBeInTheDocument();
+    });
+    expect(mockedApi.adminUpdateMembers).not.toHaveBeenCalled();
   });
 
   it('creates a new group', async () => {

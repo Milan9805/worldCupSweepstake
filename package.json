@@ -18,8 +18,10 @@
     "dev": "npm run dev --workspace=packages/frontend",
     "seed": "npx ts-node --project scripts/tsconfig.json scripts/seed.ts",
     "wait-for-dynamo": "until curl -s http://localhost:8000 > /dev/null 2>&1; do sleep 1; done",
+    "wait-for-s3": "until curl -s http://localhost:4566/_localstack/health > /dev/null 2>&1; do sleep 1; done",
+    "setup-s3": "npx ts-node --project scripts/tsconfig.json scripts/setup-s3.ts",
     "api:local": "npm run dev --workspace=packages/api",
-    "start:local": "docker-compose up -d && npm run wait-for-dynamo && npm run seed && (npm run api:local &) && sleep 2 && npm run dev",
+    "start:local": "docker-compose up -d && npm run wait-for-dynamo && npm run wait-for-s3 && npm run seed && npm run setup-s3 && (npm run api:local &) && sleep 2 && npm run dev",
     "stop": "lsof -ti:3001 -ti:3000 | xargs kill -9 2>/dev/null; docker-compose down"
   },
   "devDependencies": {

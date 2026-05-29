@@ -7,16 +7,20 @@ import { randomUUID } from 'crypto';
 const isLocal = process.env.IS_LOCAL === 'true';
 const BUCKET_NAME = process.env.AVATAR_BUCKET || 'sweepstake-avatars';
 
-const s3Client = new S3Client(
-  isLocal
+const s3Client = new S3Client({
+  // Don't inject a default CRC32 checksum into the presigned URL — the browser
+  // PUTs a plain body, so a baked-in checksum would mismatch and S3 rejects it.
+  requestChecksumCalculation: 'WHEN_REQUIRED',
+  responseChecksumValidation: 'WHEN_REQUIRED',
+  ...(isLocal
     ? {
         endpoint: 'http://localhost:4566',
         region: 'us-east-1',
         credentials: { accessKeyId: 'local', secretAccessKey: 'local' },
         forcePathStyle: true,
       }
-    : {}
-);
+    : {}),
+});
 
 export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
   try {

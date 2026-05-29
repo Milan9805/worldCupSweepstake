@@ -82,6 +82,36 @@ resource "aws_s3_bucket_cors_configuration" "avatars" {
   }
 }
 
+# Avatars are served to <img> tags via plain (non-presigned) URLs persisted on
+# each member, so the bucket needs public read access for objects.
+resource "aws_s3_bucket_public_access_block" "avatars" {
+  bucket = aws_s3_bucket.avatars.id
+
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+resource "aws_s3_bucket_policy" "avatars" {
+  bucket = aws_s3_bucket.avatars.id
+
+  depends_on = [aws_s3_bucket_public_access_block.avatars]
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "PublicReadGetObject"
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = "s3:GetObject"
+        Resource  = "${aws_s3_bucket.avatars.arn}/*"
+      }
+    ]
+  })
+}
+
 # CloudFront distribution
 resource "aws_cloudfront_function" "url_rewrite" {
   name    = "${var.bucket_prefix}-url-rewrite"

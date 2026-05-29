@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import NavBar from '@/components/NavBar';
 import DragDropAssign from '@/components/DragDropAssign';
-import { adminLogin, adminCreateGroup, adminUpdateMembers, adminGetUploadUrl } from '@/lib/api';
+import { adminLogin, adminCreateGroup, adminUpdateMembers, adminGetUploadUrl, getGroup } from '@/lib/api';
+import type { Group } from '@sweepstake/shared';
 
 export default function AdminPage() {
   const [token, setToken] = useState<string | null>(null);
@@ -64,11 +65,17 @@ export default function AdminPage() {
   const handleSaveMembers = async () => {
     if (!token || !groupKey) return;
     try {
-      const members = membersList.map((name) => ({
-        name,
-        imageUrl: null,
-        teams: [],
-      }));
+      // Preserve existing imageUrl/teams for members that already exist
+      const existing = (await getGroup(groupKey)) as Group;
+      const existingByName = new Map(existing.members.map((m) => [m.name, m]));
+      const members = membersList.map((name) => {
+        const prev = existingByName.get(name);
+        return {
+          name,
+          imageUrl: prev?.imageUrl ?? null,
+          teams: prev?.teams ?? [],
+        };
+      });
       await adminUpdateMembers(token, groupKey, members);
       setStatusMessage('Members saved successfully!');
     } catch (err) {
@@ -86,12 +93,29 @@ export default function AdminPage() {
         avatarFile.type
       );
       // Upload directly to S3
-      await fetch(uploadUrl, {
+      const uploadRes = await fetch(uploadUrl, {
         method: 'PUT',
         body: avatarFile,
         headers: { 'Content-Type': avatarFile.type },
       });
-      setStatusMessage(`Avatar uploaded! URL: ${imageUrl}`);
+      if (!uploadRes.ok) {
+        throw new Error(`Upload to storage failed (${uploadRes.status})`);
+      }
+
+      // Persist the new imageUrl onto the member record so it actually gets used
+      const group = (await getGroup(avatarGroupKey)) as Group;
+      const member = group.members.find((m) => m.name === avatarPerson);
+      if (!member) {
+        setStatusMessage(
+          `Avatar uploaded, but no member named "${avatarPerson}" exists in group "${avatarGroupKey}".`
+        );
+        return;
+      }
+      const members = group.members.map((m) =>
+        m.name === avatarPerson ? { ...m, imageUrl } : m
+      );
+      await adminUpdateMembers(token, avatarGroupKey, members);
+      setStatusMessage(`Avatar uploaded and saved for ${avatarPerson}.`);
     } catch (err) {
       setStatusMessage(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }

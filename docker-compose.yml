@@ -8,3 +8,12 @@ services:
       - "8000:8000"
     command: "-jar DynamoDBLocal.jar -sharedDb -inMemory"
     restart: unless-stopped
+
+  localstack:
+    image: localstack/localstack:3
+    container_name: sweepstake-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: s3
+    restart: unless-stopped
