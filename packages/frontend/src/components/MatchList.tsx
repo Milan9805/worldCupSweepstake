@@ -2,6 +2,7 @@
 
 import { Match } from '@sweepstake/shared';
 import { formatMatchDate, formatMatchTime } from '@/lib/format';
+import Avatar from '@/components/Avatar';
 
 interface MatchListProps {
   matches: Match[];
@@ -52,9 +53,7 @@ export default function MatchList({ matches, teamOwners }: MatchListProps) {
                   <span className="text-[10px] text-white/70 truncate max-w-[60px]">
                     {teamOwners[match.homeTeam].name}
                   </span>
-                  <div className="w-5 h-5 rounded-full bg-accent/30 flex items-center justify-center text-[10px] shrink-0">
-                    {teamOwners[match.homeTeam].name[0]}
-                  </div>
+                  <Avatar name={teamOwners[match.homeTeam].name} size="sm" />
                 </>
               )}
               <span className="text-sm font-medium">{match.homeTeam}</span>
@@ -74,9 +73,7 @@ export default function MatchList({ matches, teamOwners }: MatchListProps) {
               <span className="text-sm font-medium">{match.awayTeam}</span>
               {teamOwners?.[match.awayTeam] && (
                 <>
-                  <div className="w-5 h-5 rounded-full bg-accent/30 flex items-center justify-center text-[10px] shrink-0">
-                    {teamOwners[match.awayTeam].name[0]}
-                  </div>
+                  <Avatar name={teamOwners[match.awayTeam].name} size="sm" />
                   <span className="text-[10px] text-white/70 truncate max-w-[60px]">
                     {teamOwners[match.awayTeam].name}
                   </span>

@@ -1,6 +1,7 @@
 'use client';
 
 import { LeaderboardEntry } from '@sweepstake/shared';
+import Avatar from '@/components/Avatar';
 
 interface LeaderboardProps {
   entries: LeaderboardEntry[];
@@ -19,17 +20,7 @@ export default function Leaderboard({ entries }: LeaderboardProps) {
             <span className="text-lg font-bold text-white/70 w-6">
               {index + 1}
             </span>
-            {entry.imageUrl ? (
-              <img
-                src={entry.imageUrl}
-                alt={entry.name}
-                className="w-8 h-8 rounded-full"
-              />
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-accent/30 flex items-center justify-center text-sm font-bold">
-                {entry.name[0]}
-              </div>
-            )}
+            <Avatar name={entry.name} imageUrl={entry.imageUrl} size="lg" />
             <div className="flex-1">
               <div className="font-medium text-sm text-white">{entry.name}</div>
               <div className="text-xs text-white/70">

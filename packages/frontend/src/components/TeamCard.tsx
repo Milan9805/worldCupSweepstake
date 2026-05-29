@@ -3,6 +3,7 @@
 import { Match, Team } from '@sweepstake/shared';
 import { TeamMatchInfo } from '@/lib/teamMatches';
 import { formatMatchDate, formatMatchTime } from '@/lib/format';
+import Avatar from '@/components/Avatar';
 
 // Fallbacks for when the source omits a channel's colours.
 const DEFAULT_CHANNEL_BG = '#374151';
@@ -57,17 +58,7 @@ export default function TeamCard({ team, ownerName, ownerImage, groupPosition, t
         )}
         {ownerName && (
           <div className="flex items-center gap-1">
-            {ownerImage ? (
-              <img
-                src={ownerImage}
-                alt={ownerName}
-                className="w-6 h-6 rounded-full"
-              />
-            ) : (
-              <div className="w-6 h-6 rounded-full bg-accent/50 flex items-center justify-center text-xs">
-                {ownerName[0]}
-              </div>
-            )}
+            <Avatar name={ownerName} imageUrl={ownerImage} size="md" />
           </div>
         )}
       </div>
@@ -205,13 +196,7 @@ function OwnerTag({ owner }: { owner: { name: string; imageUrl: string | null } 
   if (!owner) return null;
   return (
     <span className="flex items-center gap-1 text-white/70 shrink-0">
-      {owner.imageUrl ? (
-        <img src={owner.imageUrl} alt={owner.name} className="w-4 h-4 rounded-full" />
-      ) : (
-        <span className="w-4 h-4 rounded-full bg-accent/50 flex items-center justify-center text-[9px]">
-          {owner.name[0]}
-        </span>
-      )}
+      <Avatar name={owner.name} imageUrl={owner.imageUrl} size="xs" />
       {owner.name}
     </span>
   );

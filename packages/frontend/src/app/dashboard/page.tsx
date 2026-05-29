@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import NavBar from '@/components/NavBar';
+import Avatar from '@/components/Avatar';
 import TeamCard from '@/components/TeamCard';
 import Leaderboard from '@/components/Leaderboard';
 import { useGroup } from '@/hooks/useGroup';
@@ -84,17 +85,7 @@ export default function DashboardPage() {
                       : 'bg-black/30 text-white hover:bg-black/40'
                   }`}
                 >
-                  {member.imageUrl ? (
-                    <img
-                      src={member.imageUrl}
-                      alt={member.name}
-                      className="w-6 h-6 rounded-full"
-                    />
-                  ) : (
-                    <div className="w-6 h-6 rounded-full bg-accent/30 flex items-center justify-center text-xs">
-                      {member.name[0]}
-                    </div>
-                  )}
+                  <Avatar name={member.name} imageUrl={member.imageUrl} size="md" />
                   {member.name}
                 </button>
               ))}
