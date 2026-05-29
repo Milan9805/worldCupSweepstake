@@ -1,6 +1,12 @@
 'use client';
 
-import { Team } from '@sweepstake/shared';
+import { Match, Team } from '@sweepstake/shared';
+import { TeamMatchInfo } from '@/lib/teamMatches';
+import { formatMatchDate, formatMatchTime } from '@/lib/format';
+
+// Fallbacks for when the source omits a channel's colours.
+const DEFAULT_CHANNEL_BG = '#374151';
+const DEFAULT_CHANNEL_FG = '#ffffff';
 
 interface TeamCardProps {
   team: Team;
@@ -8,9 +14,11 @@ interface TeamCardProps {
   ownerImage?: string | null;
   groupPosition?: number;
   totalInGroup?: number;
+  matchInfo?: TeamMatchInfo;
+  teamsByCode?: Record<string, Team>;
 }
 
-export default function TeamCard({ team, ownerName, ownerImage, groupPosition, totalInGroup: _totalInGroup }: TeamCardProps) {
+export default function TeamCard({ team, ownerName, ownerImage, groupPosition, totalInGroup: _totalInGroup, matchInfo, teamsByCode }: TeamCardProps) {
   return (
     <div
       className={`rounded-lg border p-4 transition-all ${
@@ -99,7 +107,101 @@ export default function TeamCard({ team, ownerName, ownerImage, groupPosition, t
           </div>
         )}
       </div>
+
+      <MatchInfoFooter team={team} matchInfo={matchInfo} teamsByCode={teamsByCode} />
     </div>
+  );
+}
+
+function MatchInfoFooter({
+  team,
+  matchInfo,
+  teamsByCode,
+}: {
+  team: Team;
+  matchInfo?: TeamMatchInfo;
+  teamsByCode?: Record<string, Team>;
+}) {
+  if (!matchInfo) return null;
+  const { live, next, previous } = matchInfo;
+  if (!live && !next && !previous) return null;
+
+  const opponentLabel = (match: Match) => {
+    const oppCode = match.homeTeam === team.teamCode ? match.awayTeam : match.homeTeam;
+    const opp = teamsByCode?.[oppCode];
+    return `${opp?.flag ?? ''} ${oppCode}`.trim();
+  };
+
+  return (
+    <div className="mt-3 pt-3 border-t border-white/10 space-y-1.5 text-xs">
+      {live ? (
+        <div className="flex items-center gap-2">
+          <span className="bg-red-600 text-white text-[10px] px-2 py-0.5 rounded animate-pulse shrink-0">
+            LIVE
+          </span>
+          <span className="text-white font-medium">
+            {live.homeTeam} {live.homeScore} - {live.awayScore} {live.awayTeam}
+          </span>
+        </div>
+      ) : (
+        <>
+          {previous && (
+            <div className="flex items-center gap-2">
+              <span className="text-white/70 w-9 shrink-0">Last</span>
+              <span className="text-white">
+                {previous.homeTeam} {previous.homeScore} - {previous.awayScore}{' '}
+                {previous.awayTeam}
+              </span>
+              <ResultTag team={team} match={previous} />
+            </div>
+          )}
+          {next && (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-white/70 w-9 shrink-0">Next</span>
+                <span className="text-white">
+                  vs {opponentLabel(next)} · {formatMatchDate(next.datetime)},{' '}
+                  {formatMatchTime(next.datetime)}
+                </span>
+              </div>
+              {next.channels && next.channels.length > 0 && (
+                <div className="flex flex-wrap gap-1 justify-center">
+                  {next.channels.map((channel) => (
+                    <span
+                      key={channel.name}
+                      style={{
+                        backgroundColor: channel.bg || DEFAULT_CHANNEL_BG,
+                        color: channel.fg || DEFAULT_CHANNEL_FG,
+                      }}
+                      className="text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-sm"
+                    >
+                      {channel.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function ResultTag({ team, match }: { team: Team; match: Match }) {
+  if (match.homeScore === null || match.awayScore === null) return null;
+  const isHome = match.homeTeam === team.teamCode;
+  const teamScore = isHome ? match.homeScore : match.awayScore;
+  const oppScore = isHome ? match.awayScore : match.homeScore;
+  const outcome = teamScore > oppScore ? 'W' : teamScore < oppScore ? 'L' : 'D';
+  const colour =
+    outcome === 'W'
+      ? 'bg-green-700/60 text-green-200'
+      : outcome === 'L'
+      ? 'bg-red-800/60 text-red-200'
+      : 'bg-yellow-700/60 text-yellow-200';
+  return (
+    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${colour}`}>{outcome}</span>
   );
 }
 

@@ -24,10 +24,11 @@ describe('useGroup', () => {
     mockLocalStorage.clear();
   });
 
-  it('initializes with null group and empty teams', () => {
+  it('initializes with null group and empty teams and matches', () => {
     const { result } = renderHook(() => useGroup());
     expect(result.current.group).toBeNull();
     expect(result.current.teams).toEqual([]);
+    expect(result.current.matches).toEqual([]);
     expect(result.current.loading).toBe(false);
     expect(result.current.error).toBeNull();
   });
@@ -82,12 +83,14 @@ describe('useGroup', () => {
     expect(mockLocalStorage.removeItem).toHaveBeenCalledWith('sweepstake_group_key');
   });
 
-  it('loadData fetches group and teams', async () => {
+  it('loadData fetches group, teams and matches', async () => {
     mockLocalStorage.getItem.mockReturnValue('test');
     const groupData = { groupKey: 'test', groupName: 'Test', members: [] };
     const teamsData = [{ teamCode: 'ENG', name: 'England' }];
+    const matchesData = [{ matchId: 'm1', homeTeam: 'ENG', awayTeam: 'BRA' }];
     mockedApi.getGroup.mockResolvedValue(groupData);
     mockedApi.getTeams.mockResolvedValue(teamsData);
+    mockedApi.getMatches.mockResolvedValue(matchesData);
 
     const { result } = renderHook(() => useGroup());
 
@@ -97,6 +100,7 @@ describe('useGroup', () => {
 
     expect(result.current.group).toEqual(groupData);
     expect(result.current.teams).toEqual(teamsData);
+    expect(result.current.matches).toEqual(matchesData);
   });
 
   it('loadData sets error on failure', async () => {

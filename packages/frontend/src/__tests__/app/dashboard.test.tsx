@@ -9,6 +9,7 @@ const mockLoadData = jest.fn();
 let mockGroupKey: string | null = 'test-group';
 let mockGroup: Record<string, unknown> | null = null;
 let mockTeams: unknown[] = [];
+const mockMatches: unknown[] = [];
 let mockLoading = false;
 
 jest.mock('../../hooks/useGroup', () => ({
@@ -16,6 +17,7 @@ jest.mock('../../hooks/useGroup', () => ({
     groupKey: mockGroupKey,
     group: mockGroup,
     teams: mockTeams,
+    matches: mockMatches,
     loading: mockLoading,
     loadData: mockLoadData,
   }),

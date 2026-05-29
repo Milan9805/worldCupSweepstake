@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { getGroup, getTeams } from '@/lib/api';
-import { Group, Team } from '@sweepstake/shared';
+import { getGroup, getTeams, getMatches } from '@/lib/api';
+import { Group, Team, Match } from '@sweepstake/shared';
 
 export function useGroup() {
   const [groupKey, setGroupKey] = useState<string | null>(null);
   const [group, setGroup] = useState<Group | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
+  const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,12 +39,14 @@ export function useGroup() {
     if (!groupKey) return;
     setLoading(true);
     try {
-      const [groupData, teamsData] = await Promise.all([
+      const [groupData, teamsData, matchesData] = await Promise.all([
         getGroup(groupKey),
         getTeams(),
+        getMatches(),
       ]);
       setGroup(groupData as Group);
       setTeams(teamsData as Team[]);
+      setMatches(matchesData as Match[]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
@@ -57,5 +60,5 @@ export function useGroup() {
     setGroup(null);
   }, []);
 
-  return { groupKey, group, teams, loading, error, login, loadData, logout };
+  return { groupKey, group, teams, matches, loading, error, login, loadData, logout };
 }

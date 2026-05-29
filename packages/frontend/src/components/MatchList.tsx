@@ -1,6 +1,7 @@
 'use client';
 
 import { Match } from '@sweepstake/shared';
+import { formatMatchDate, formatMatchTime } from '@/lib/format';
 
 interface MatchListProps {
   matches: Match[];
@@ -12,25 +13,6 @@ const DEFAULT_CHANNEL_BG = '#374151';
 const DEFAULT_CHANNEL_FG = '#ffffff';
 
 export default function MatchList({ matches, teamOwners }: MatchListProps) {
-  const formatDate = (datetime: string) => {
-    const date = new Date(datetime);
-    return date.toLocaleDateString('en-GB', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      timeZone: 'Europe/London',
-    });
-  };
-
-  const formatTime = (datetime: string) => {
-    const date = new Date(datetime);
-    return date.toLocaleTimeString('en-GB', {
-      hour: '2-digit',
-      minute: '2-digit',
-      timeZone: 'Europe/London',
-    });
-  };
-
   const statusBadge = (status: string) => {
     switch (status) {
       case 'LIVE':
@@ -59,8 +41,8 @@ export default function MatchList({ matches, teamOwners }: MatchListProps) {
         >
           <div className="flex items-center gap-3">
           <div className="text-xs text-white/70 w-20 text-center">
-            <div>{formatDate(match.datetime)}</div>
-            <div>{formatTime(match.datetime)}</div>
+            <div>{formatMatchDate(match.datetime)}</div>
+            <div>{formatMatchTime(match.datetime)}</div>
           </div>
 
           <div className="flex-1 flex items-center justify-center gap-2">

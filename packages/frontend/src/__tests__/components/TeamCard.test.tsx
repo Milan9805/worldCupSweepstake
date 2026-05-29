@@ -2,7 +2,8 @@ import '@testing-library/jest-dom';
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import TeamCard from '../../components/TeamCard';
-import { Team } from '@sweepstake/shared';
+import { Match, Team } from '@sweepstake/shared';
+import { TeamMatchInfo } from '../../lib/teamMatches';
 
 describe('TeamCard', () => {
   const makeTeam = (overrides: Partial<Team> = {}): Team => ({
@@ -85,5 +86,132 @@ describe('TeamCard', () => {
   it('shows group position when provided', () => {
     render(<TeamCard team={makeTeam()} groupPosition={1} totalInGroup={4} />);
     expect(screen.getByText(/1st in group/)).toBeInTheDocument();
+  });
+
+  describe('match info footer', () => {
+    const makeMatch = (overrides: Partial<Match> = {}): Match => ({
+      matchId: 'm1',
+      homeTeam: 'ENG',
+      awayTeam: 'BRA',
+      homeScore: null,
+      awayScore: null,
+      status: 'SCHEDULED',
+      stage: 'GROUP_STAGE',
+      group: 'A',
+      datetime: '2026-06-14T18:00:00Z',
+      venue: 'MetLife Stadium',
+      ...overrides,
+    });
+
+    const teamsByCode: Record<string, Team> = {
+      BRA: makeTeam({ teamCode: 'BRA', name: 'Brazil', flag: '🇧🇷' }),
+    };
+
+    const emptyInfo: TeamMatchInfo = { live: null, next: null, previous: null };
+
+    it('renders nothing when no matchInfo is provided', () => {
+      render(<TeamCard team={makeTeam()} />);
+      expect(screen.queryByText('Next')).not.toBeInTheDocument();
+      expect(screen.queryByText('Last')).not.toBeInTheDocument();
+    });
+
+    it('renders nothing when matchInfo has no matches', () => {
+      render(<TeamCard team={makeTeam()} matchInfo={emptyInfo} />);
+      expect(screen.queryByText('Next')).not.toBeInTheDocument();
+      expect(screen.queryByText('Last')).not.toBeInTheDocument();
+    });
+
+    it('shows the live game with score and LIVE badge', () => {
+      const live = makeMatch({ status: 'LIVE', homeScore: 1, awayScore: 0 });
+      render(
+        <TeamCard
+          team={makeTeam()}
+          matchInfo={{ live, next: null, previous: null }}
+          teamsByCode={teamsByCode}
+        />
+      );
+      expect(screen.getByText('LIVE')).toBeInTheDocument();
+      expect(screen.getByText('ENG 1 - 0 BRA')).toBeInTheDocument();
+    });
+
+    it('prefers the live game over next and previous', () => {
+      const live = makeMatch({ status: 'LIVE', homeScore: 2, awayScore: 2 });
+      const next = makeMatch({ matchId: 'm2', awayTeam: 'GER', status: 'SCHEDULED' });
+      const previous = makeMatch({
+        matchId: 'm0',
+        status: 'FINISHED',
+        homeScore: 3,
+        awayScore: 0,
+      });
+      render(
+        <TeamCard
+          team={makeTeam()}
+          matchInfo={{ live, next, previous }}
+          teamsByCode={teamsByCode}
+        />
+      );
+      expect(screen.getByText('LIVE')).toBeInTheDocument();
+      expect(screen.queryByText('Next')).not.toBeInTheDocument();
+      expect(screen.queryByText('Last')).not.toBeInTheDocument();
+    });
+
+    it('shows next fixture with opponent and previous result when no live game', () => {
+      const next = makeMatch({ awayTeam: 'BRA', status: 'SCHEDULED' });
+      const previous = makeMatch({
+        matchId: 'm0',
+        awayTeam: 'BRA',
+        status: 'FINISHED',
+        homeScore: 2,
+        awayScore: 1,
+      });
+      render(
+        <TeamCard
+          team={makeTeam()}
+          matchInfo={{ live: null, next, previous }}
+          teamsByCode={teamsByCode}
+        />
+      );
+      expect(screen.getByText('Next')).toBeInTheDocument();
+      expect(screen.getByText(/vs 🇧🇷 BRA/)).toBeInTheDocument();
+      expect(screen.getByText('Last')).toBeInTheDocument();
+      expect(screen.getByText(/ENG 2 - 1 BRA/)).toBeInTheDocument();
+    });
+
+    it('shows a W tag when the team won the previous game', () => {
+      const previous = makeMatch({ status: 'FINISHED', homeScore: 2, awayScore: 1 });
+      render(
+        <TeamCard team={makeTeam()} matchInfo={{ live: null, next: null, previous }} />
+      );
+      expect(screen.getByText('W')).toBeInTheDocument();
+    });
+
+    it('shows an L tag when the team lost away from home', () => {
+      const previous = makeMatch({
+        homeTeam: 'BRA',
+        awayTeam: 'ENG',
+        status: 'FINISHED',
+        homeScore: 3,
+        awayScore: 0,
+      });
+      render(
+        <TeamCard team={makeTeam()} matchInfo={{ live: null, next: null, previous }} />
+      );
+      expect(screen.getByText('L')).toBeInTheDocument();
+    });
+
+    it('renders broadcast channel pills for the next fixture', () => {
+      const next = makeMatch({
+        status: 'SCHEDULED',
+        channels: [{ name: 'ITV1', bg: '#127b60', fg: '#ffffff' }],
+      });
+      render(
+        <TeamCard
+          team={makeTeam()}
+          matchInfo={{ live: null, next, previous: null }}
+          teamsByCode={teamsByCode}
+        />
+      );
+      expect(screen.getByText('ITV1')).toHaveStyle({ backgroundColor: '#127b60' });
+    });
   });
 });

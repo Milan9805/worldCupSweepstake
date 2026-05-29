@@ -6,10 +6,11 @@ import NavBar from '@/components/NavBar';
 import TeamCard from '@/components/TeamCard';
 import Leaderboard from '@/components/Leaderboard';
 import { useGroup } from '@/hooks/useGroup';
+import { getTeamMatchInfo } from '@/lib/teamMatches';
 import { calculateLeaderboard, Team } from '@sweepstake/shared';
 
 export default function DashboardPage() {
-  const { groupKey, group, teams, loading, loadData } = useGroup();
+  const { groupKey, group, teams, matches, loading, loadData } = useGroup();
   const [selectedPerson, setSelectedPerson] = useState<string>('');
   const router = useRouter();
 
@@ -46,6 +47,8 @@ export default function DashboardPage() {
     : [];
 
   const leaderboard = calculateLeaderboard(group.members, teams);
+
+  const teamsByCode = Object.fromEntries(teams.map((t) => [t.teamCode, t]));
 
   return (
     <div className="min-h-screen">
@@ -111,6 +114,8 @@ export default function DashboardPage() {
                   key={team.teamCode}
                   team={team}
                   groupPosition={getGroupPosition(team, teams)}
+                  matchInfo={getTeamMatchInfo(team.teamCode, matches)}
+                  teamsByCode={teamsByCode}
                 />
               ))}
             </div>
