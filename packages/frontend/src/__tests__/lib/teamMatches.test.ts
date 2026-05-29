@@ -1,4 +1,4 @@
-import { getTeamMatchInfo } from '../../lib/teamMatches';
+import { getTeamMatchInfo, compareTeamsByMatch, TeamMatchInfo } from '../../lib/teamMatches';
 import { Match } from '@sweepstake/shared';
 
 const makeMatch = (overrides: Partial<Match> = {}): Match => ({
@@ -51,5 +51,52 @@ describe('getTeamMatchInfo', () => {
     const recent = makeMatch({ matchId: 'recent', status: 'FINISHED', datetime: '2026-06-14T18:00:00Z', homeScore: 2, awayScore: 1 });
     const info = getTeamMatchInfo('ENG', [old, recent]);
     expect(info.previous?.matchId).toBe('recent');
+  });
+});
+
+describe('compareTeamsByMatch', () => {
+  const live: TeamMatchInfo = { live: makeMatch({ status: 'LIVE' }), next: null, previous: null };
+  const nextSoon: TeamMatchInfo = {
+    live: null,
+    next: makeMatch({ status: 'SCHEDULED', datetime: '2026-06-18T18:00:00Z' }),
+    previous: null,
+  };
+  const nextLate: TeamMatchInfo = {
+    live: null,
+    next: makeMatch({ status: 'SCHEDULED', datetime: '2026-06-25T18:00:00Z' }),
+    previous: null,
+  };
+  const finishedRecent: TeamMatchInfo = {
+    live: null,
+    next: null,
+    previous: makeMatch({ status: 'FINISHED', datetime: '2026-06-14T18:00:00Z' }),
+  };
+  const finishedOld: TeamMatchInfo = {
+    live: null,
+    next: null,
+    previous: makeMatch({ status: 'FINISHED', datetime: '2026-06-10T18:00:00Z' }),
+  };
+  const empty: TeamMatchInfo = { live: null, next: null, previous: null };
+
+  const sorted = (infos: TeamMatchInfo[]) => [...infos].sort(compareTeamsByMatch);
+
+  it('puts live matches first', () => {
+    expect(sorted([nextSoon, live, finishedRecent])[0]).toBe(live);
+  });
+
+  it('orders upcoming matches soonest first', () => {
+    expect(sorted([nextLate, nextSoon])).toEqual([nextSoon, nextLate]);
+  });
+
+  it('orders finished teams after upcoming ones, most recent past first', () => {
+    expect(sorted([finishedOld, finishedRecent, nextSoon])).toEqual([
+      nextSoon,
+      finishedRecent,
+      finishedOld,
+    ]);
+  });
+
+  it('sinks teams with no matches to the bottom', () => {
+    expect(sorted([empty, finishedRecent, live])).toEqual([live, finishedRecent, empty]);
   });
 });

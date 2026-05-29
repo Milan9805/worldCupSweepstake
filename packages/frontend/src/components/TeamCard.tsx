@@ -16,9 +16,10 @@ interface TeamCardProps {
   totalInGroup?: number;
   matchInfo?: TeamMatchInfo;
   teamsByCode?: Record<string, Team>;
+  ownersByTeam?: Record<string, { name: string; imageUrl: string | null }>;
 }
 
-export default function TeamCard({ team, ownerName, ownerImage, groupPosition, totalInGroup: _totalInGroup, matchInfo, teamsByCode }: TeamCardProps) {
+export default function TeamCard({ team, ownerName, ownerImage, groupPosition, totalInGroup: _totalInGroup, matchInfo, teamsByCode, ownersByTeam }: TeamCardProps) {
   return (
     <div
       className={`rounded-lg border p-4 transition-all ${
@@ -108,7 +109,7 @@ export default function TeamCard({ team, ownerName, ownerImage, groupPosition, t
         )}
       </div>
 
-      <MatchInfoFooter team={team} matchInfo={matchInfo} teamsByCode={teamsByCode} />
+      <MatchInfoFooter team={team} matchInfo={matchInfo} teamsByCode={teamsByCode} ownersByTeam={ownersByTeam} />
     </div>
   );
 }
@@ -117,52 +118,63 @@ function MatchInfoFooter({
   team,
   matchInfo,
   teamsByCode,
+  ownersByTeam,
 }: {
   team: Team;
   matchInfo?: TeamMatchInfo;
   teamsByCode?: Record<string, Team>;
+  ownersByTeam?: Record<string, { name: string; imageUrl: string | null }>;
 }) {
   if (!matchInfo) return null;
   const { live, next, previous } = matchInfo;
   if (!live && !next && !previous) return null;
 
+  const opponentCode = (match: Match) =>
+    match.homeTeam === team.teamCode ? match.awayTeam : match.homeTeam;
+
   const opponentLabel = (match: Match) => {
-    const oppCode = match.homeTeam === team.teamCode ? match.awayTeam : match.homeTeam;
+    const oppCode = opponentCode(match);
     const opp = teamsByCode?.[oppCode];
     return `${opp?.flag ?? ''} ${oppCode}`.trim();
   };
 
+  // The group member who owns the opponent in this match, if any.
+  const opponentOwner = (match: Match) => ownersByTeam?.[opponentCode(match)] ?? null;
+
   return (
     <div className="mt-3 pt-3 border-t border-white/10 space-y-1.5 text-xs">
       {live ? (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="bg-red-600 text-white text-[10px] px-2 py-0.5 rounded animate-pulse shrink-0">
             LIVE
           </span>
           <span className="text-white font-medium">
             {live.homeTeam} {live.homeScore} - {live.awayScore} {live.awayTeam}
           </span>
+          <OwnerTag owner={opponentOwner(live)} />
         </div>
       ) : (
         <>
           {previous && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-white/70 w-9 shrink-0">Last</span>
               <span className="text-white">
                 {previous.homeTeam} {previous.homeScore} - {previous.awayScore}{' '}
                 {previous.awayTeam}
               </span>
               <ResultTag team={team} match={previous} />
+              <OwnerTag owner={opponentOwner(previous)} />
             </div>
           )}
           {next && (
             <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-white/70 w-9 shrink-0">Next</span>
                 <span className="text-white">
                   vs {opponentLabel(next)} · {formatMatchDate(next.datetime)},{' '}
                   {formatMatchTime(next.datetime)}
                 </span>
+                <OwnerTag owner={opponentOwner(next)} />
               </div>
               {next.channels && next.channels.length > 0 && (
                 <div className="flex flex-wrap gap-1 justify-center">
@@ -185,6 +197,23 @@ function MatchInfoFooter({
         </>
       )}
     </div>
+  );
+}
+
+// Shows which group member owns the opponent, when the opponent belongs to one.
+function OwnerTag({ owner }: { owner: { name: string; imageUrl: string | null } | null }) {
+  if (!owner) return null;
+  return (
+    <span className="flex items-center gap-1 text-white/70 shrink-0">
+      {owner.imageUrl ? (
+        <img src={owner.imageUrl} alt={owner.name} className="w-4 h-4 rounded-full" />
+      ) : (
+        <span className="w-4 h-4 rounded-full bg-accent/50 flex items-center justify-center text-[9px]">
+          {owner.name[0]}
+        </span>
+      )}
+      {owner.name}
+    </span>
   );
 }
 

@@ -199,6 +199,58 @@ describe('TeamCard', () => {
       expect(screen.getByText('L')).toBeInTheDocument();
     });
 
+    it('shows the opponent owner on the next fixture when owned', () => {
+      const next = makeMatch({ awayTeam: 'BRA', status: 'SCHEDULED' });
+      render(
+        <TeamCard
+          team={makeTeam()}
+          matchInfo={{ live: null, next, previous: null }}
+          teamsByCode={teamsByCode}
+          ownersByTeam={{ BRA: { name: 'Dave', imageUrl: null } }}
+        />
+      );
+      expect(screen.getByText('Dave')).toBeInTheDocument();
+    });
+
+    it('shows the opponent owner on the live game', () => {
+      const live = makeMatch({ status: 'LIVE', homeScore: 1, awayScore: 0 });
+      render(
+        <TeamCard
+          team={makeTeam()}
+          matchInfo={{ live, next: null, previous: null }}
+          teamsByCode={teamsByCode}
+          ownersByTeam={{ BRA: { name: 'Dave', imageUrl: null } }}
+        />
+      );
+      expect(screen.getByText('Dave')).toBeInTheDocument();
+    });
+
+    it('shows the opponent owner on the last result', () => {
+      const previous = makeMatch({ status: 'FINISHED', homeScore: 2, awayScore: 1 });
+      render(
+        <TeamCard
+          team={makeTeam()}
+          matchInfo={{ live: null, next: null, previous }}
+          teamsByCode={teamsByCode}
+          ownersByTeam={{ BRA: { name: 'Dave', imageUrl: null } }}
+        />
+      );
+      expect(screen.getByText('Dave')).toBeInTheDocument();
+    });
+
+    it('shows no owner when the opponent is unowned', () => {
+      const next = makeMatch({ awayTeam: 'BRA', status: 'SCHEDULED' });
+      render(
+        <TeamCard
+          team={makeTeam()}
+          matchInfo={{ live: null, next, previous: null }}
+          teamsByCode={teamsByCode}
+          ownersByTeam={{}}
+        />
+      );
+      expect(screen.queryByText('Dave')).not.toBeInTheDocument();
+    });
+
     it('renders broadcast channel pills for the next fixture', () => {
       const next = makeMatch({
         status: 'SCHEDULED',

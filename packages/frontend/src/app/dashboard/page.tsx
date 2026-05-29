@@ -6,7 +6,7 @@ import NavBar from '@/components/NavBar';
 import TeamCard from '@/components/TeamCard';
 import Leaderboard from '@/components/Leaderboard';
 import { useGroup } from '@/hooks/useGroup';
-import { getTeamMatchInfo } from '@/lib/teamMatches';
+import { getTeamMatchInfo, compareTeamsByMatch } from '@/lib/teamMatches';
 import { calculateLeaderboard, Team } from '@sweepstake/shared';
 
 export default function DashboardPage() {
@@ -46,9 +46,24 @@ export default function DashboardPage() {
     ? teams.filter((t) => person.teams.includes(t.teamCode))
     : [];
 
+  // Pair each team with its match info, then order by match relevance
+  // (live first, then soonest upcoming, then finished).
+  const personTeamCards = personTeams
+    .map((team) => ({ team, matchInfo: getTeamMatchInfo(team.teamCode, matches) }))
+    .sort((a, b) => compareTeamsByMatch(a.matchInfo, b.matchInfo));
+
   const leaderboard = calculateLeaderboard(group.members, teams);
 
   const teamsByCode = Object.fromEntries(teams.map((t) => [t.teamCode, t]));
+
+  // Map each owned team code to the group member who owns it, so cards can show
+  // who an opponent belongs to. A team belongs to at most one member.
+  const ownersByTeam: Record<string, { name: string; imageUrl: string | null }> =
+    Object.fromEntries(
+      group.members.flatMap((m) =>
+        m.teams.map((code) => [code, { name: m.name, imageUrl: m.imageUrl }])
+      )
+    );
 
   return (
     <div className="min-h-screen">
@@ -109,13 +124,14 @@ export default function DashboardPage() {
 
             {/* Team cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {personTeams.map((team) => (
+              {personTeamCards.map(({ team, matchInfo }) => (
                 <TeamCard
                   key={team.teamCode}
                   team={team}
                   groupPosition={getGroupPosition(team, teams)}
-                  matchInfo={getTeamMatchInfo(team.teamCode, matches)}
+                  matchInfo={matchInfo}
                   teamsByCode={teamsByCode}
+                  ownersByTeam={ownersByTeam}
                 />
               ))}
             </div>
