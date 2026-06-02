@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.makwana.sweepstake",
+      "sha256_cert_fingerprints": [
+        "2E:0F:57:C7:68:4D:C4:8F:D3:47:25:B4:97:15:AD:91:CB:D3:6D:78:BC:B6:76:16:7B:3D:72:35:3B:F2:6E:D4"
+      ]
+    }
+  }
+]

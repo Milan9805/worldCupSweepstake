@@ -1,0 +1,25 @@
+node_modules/
+dist/
+.next/
+out/
+.env
+.env.local
+.env.production
+*.tfstate
+*.tfstate.backup
+*.tfvars
+*.zip
+.terraform/
+coverage/
+.DS_Store
+playwright-report
+test-results
+*.local.md
+*.tsbuildinfo
+next-env.d.ts
+
+# Android app signing & build artifacts (keep keystores out of git)
+*.keystore
+*.jks
+*.apk
+*.aab

@@ -1,0 +1,83 @@
+{
+  "groups": [
+    {
+      "groupKey": "lads-on-tour",
+      "groupName": "Lads on Tour",
+      "members": [
+        { "name": "Alex", "imageUrl": null, "teams": ["FRA", "COL", "SEN", "AUS", "ALG", "COD", "UZB", "NZL"] },
+        { "name": "Ben", "imageUrl": null, "teams": ["ESP", "CRO", "MEX", "KOR", "EGY", "TUN", "QAT", "HAI"] },
+        { "name": "Charlie", "imageUrl": null, "teams": ["ARG", "GER", "USA", "AUT", "CAN", "SCO", "IRQ", "CUW"] },
+        { "name": "Dan", "imageUrl": null, "teams": ["ENG", "BEL", "URU", "ECU", "NOR", "CZE", "RSA", "GHA"] },
+        { "name": "Ed", "imageUrl": null, "teams": ["POR", "MAR", "JPN", "TUR", "PAN", "PAR", "KSA", "CPV"] },
+        { "name": "Frank", "imageUrl": null, "teams": ["BRA", "NED", "SUI", "IRN", "CIV", "SWE", "JOR", "BIH"] }
+      ]
+    },
+    {
+      "groupKey": "office-sweepstake",
+      "groupName": "Office Sweepstake",
+      "members": [
+        { "name": "Sophie", "imageUrl": null, "teams": ["ARG", "BRA", "JPN", "CRO", "ALG", "PAN", "IRQ", "NZL"] },
+        { "name": "Jack", "imageUrl": null, "teams": ["FRA", "NED", "URU", "CIV", "AUT", "SCO", "QAT", "GHA"] },
+        { "name": "Emma", "imageUrl": null, "teams": ["ESP", "COL", "SEN", "TUR", "CAN", "TUN", "KSA", "HAI"] },
+        { "name": "Tom", "imageUrl": null, "teams": ["ENG", "GER", "MEX", "AUS", "EGY", "PAR", "UZB", "CPV"] },
+        { "name": "Lucy", "imageUrl": null, "teams": ["POR", "MAR", "USA", "SUI", "NOR", "CZE", "JOR", "CUW"] },
+        { "name": "Harry", "imageUrl": null, "teams": ["BEL", "ECU", "KOR", "IRN", "SWE", "COD", "RSA", "BIH"] }
+      ]
+    }
+  ],
+  "teams": [
+    { "teamCode": "MEX", "name": "Mexico", "flag": "🇲🇽", "fifaRanking": 15, "groupLetter": "A" },
+    { "teamCode": "KOR", "name": "Korea Republic", "flag": "🇰🇷", "fifaRanking": 25, "groupLetter": "A" },
+    { "teamCode": "CZE", "name": "Czechia", "flag": "🇨🇿", "fifaRanking": 41, "groupLetter": "A" },
+    { "teamCode": "RSA", "name": "South Africa", "flag": "🇿🇦", "fifaRanking": 60, "groupLetter": "A" },
+    { "teamCode": "SUI", "name": "Switzerland", "flag": "🇨🇭", "fifaRanking": 19, "groupLetter": "B" },
+    { "teamCode": "CAN", "name": "Canada", "flag": "🇨🇦", "fifaRanking": 30, "groupLetter": "B" },
+    { "teamCode": "QAT", "name": "Qatar", "flag": "🇶🇦", "fifaRanking": 55, "groupLetter": "B" },
+    { "teamCode": "BIH", "name": "Bosnia and Herzegovina", "flag": "🇧🇦", "fifaRanking": 65, "groupLetter": "B" },
+    { "teamCode": "BRA", "name": "Brazil", "flag": "🇧🇷", "fifaRanking": 6, "groupLetter": "C" },
+    { "teamCode": "MAR", "name": "Morocco", "flag": "🇲🇦", "fifaRanking": 8, "groupLetter": "C" },
+    { "teamCode": "SCO", "name": "Scotland", "flag": "🏴󠁧󠁢󠁳󠁣󠁴󠁿", "fifaRanking": 43, "groupLetter": "C" },
+    { "teamCode": "HAI", "name": "Haiti", "flag": "🇭🇹", "fifaRanking": 83, "groupLetter": "C" },
+    { "teamCode": "USA", "name": "United States", "flag": "🇺🇸", "fifaRanking": 16, "groupLetter": "D" },
+    { "teamCode": "TUR", "name": "Türkiye", "flag": "🇹🇷", "fifaRanking": 22, "groupLetter": "D" },
+    { "teamCode": "AUS", "name": "Australia", "flag": "🇦🇺", "fifaRanking": 27, "groupLetter": "D" },
+    { "teamCode": "PAR", "name": "Paraguay", "flag": "🇵🇾", "fifaRanking": 40, "groupLetter": "D" },
+    { "teamCode": "GER", "name": "Germany", "flag": "🇩🇪", "fifaRanking": 10, "groupLetter": "E" },
+    { "teamCode": "ECU", "name": "Ecuador", "flag": "🇪🇨", "fifaRanking": 23, "groupLetter": "E" },
+    { "teamCode": "CIV", "name": "Côte d'Ivoire", "flag": "🇨🇮", "fifaRanking": 34, "groupLetter": "E" },
+    { "teamCode": "CUW", "name": "Curaçao", "flag": "🇨🇼", "fifaRanking": 82, "groupLetter": "E" },
+    { "teamCode": "NED", "name": "Netherlands", "flag": "🇳🇱", "fifaRanking": 7, "groupLetter": "F" },
+    { "teamCode": "JPN", "name": "Japan", "flag": "🇯🇵", "fifaRanking": 18, "groupLetter": "F" },
+    { "teamCode": "SWE", "name": "Sweden", "flag": "🇸🇪", "fifaRanking": 38, "groupLetter": "F" },
+    { "teamCode": "TUN", "name": "Tunisia", "flag": "🇹🇳", "fifaRanking": 44, "groupLetter": "F" },
+    { "teamCode": "BEL", "name": "Belgium", "flag": "🇧🇪", "fifaRanking": 9, "groupLetter": "G" },
+    { "teamCode": "IRN", "name": "Iran", "flag": "🇮🇷", "fifaRanking": 21, "groupLetter": "G" },
+    { "teamCode": "EGY", "name": "Egypt", "flag": "🇪🇬", "fifaRanking": 29, "groupLetter": "G" },
+    { "teamCode": "NZL", "name": "New Zealand", "flag": "🇳🇿", "fifaRanking": 85, "groupLetter": "G" },
+    { "teamCode": "ESP", "name": "Spain", "flag": "🇪🇸", "fifaRanking": 2, "groupLetter": "H" },
+    { "teamCode": "URU", "name": "Uruguay", "flag": "🇺🇾", "fifaRanking": 17, "groupLetter": "H" },
+    { "teamCode": "KSA", "name": "Saudi Arabia", "flag": "🇸🇦", "fifaRanking": 61, "groupLetter": "H" },
+    { "teamCode": "CPV", "name": "Cabo Verde", "flag": "🇨🇻", "fifaRanking": 69, "groupLetter": "H" },
+    { "teamCode": "FRA", "name": "France", "flag": "🇫🇷", "fifaRanking": 1, "groupLetter": "I" },
+    { "teamCode": "SEN", "name": "Senegal", "flag": "🇸🇳", "fifaRanking": 14, "groupLetter": "I" },
+    { "teamCode": "NOR", "name": "Norway", "flag": "🇳🇴", "fifaRanking": 31, "groupLetter": "I" },
+    { "teamCode": "IRQ", "name": "Iraq", "flag": "🇮🇶", "fifaRanking": 57, "groupLetter": "I" },
+    { "teamCode": "ARG", "name": "Argentina", "flag": "🇦🇷", "fifaRanking": 3, "groupLetter": "J" },
+    { "teamCode": "AUT", "name": "Austria", "flag": "🇦🇹", "fifaRanking": 24, "groupLetter": "J" },
+    { "teamCode": "ALG", "name": "Algeria", "flag": "🇩🇿", "fifaRanking": 28, "groupLetter": "J" },
+    { "teamCode": "JOR", "name": "Jordan", "flag": "🇯🇴", "fifaRanking": 63, "groupLetter": "J" },
+    { "teamCode": "POR", "name": "Portugal", "flag": "🇵🇹", "fifaRanking": 5, "groupLetter": "K" },
+    { "teamCode": "COL", "name": "Colombia", "flag": "🇨🇴", "fifaRanking": 13, "groupLetter": "K" },
+    { "teamCode": "COD", "name": "Congo DR", "flag": "🇨🇩", "fifaRanking": 46, "groupLetter": "K" },
+    { "teamCode": "UZB", "name": "Uzbekistan", "flag": "🇺🇿", "fifaRanking": 50, "groupLetter": "K" },
+    { "teamCode": "ENG", "name": "England", "flag": "🏴󠁧󠁢󠁥󠁮󠁧󠁿", "fifaRanking": 4, "groupLetter": "L" },
+    { "teamCode": "CRO", "name": "Croatia", "flag": "🇭🇷", "fifaRanking": 11, "groupLetter": "L" },
+    { "teamCode": "PAN", "name": "Panama", "flag": "🇵🇦", "fifaRanking": 33, "groupLetter": "L" },
+    { "teamCode": "GHA", "name": "Ghana", "flag": "🇬🇭", "fifaRanking": 74, "groupLetter": "L" }
+  ],
+  "matches": [],
+  "config": {
+    "adminSecret": "$2a$10$LQv3c1yqBo9SkvXS7Qje2epIR7bqzLJJN6x9qRjKzZ1s8eF5q2KDi"
+  },
+  "adminSecretPlaintext": "sweepstake-admin-2026"
+}
