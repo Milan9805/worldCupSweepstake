@@ -7,13 +7,14 @@ import Avatar from '@/components/Avatar';
 interface MatchListProps {
   matches: Match[];
   teamOwners?: Record<string, { name: string; imageUrl: string | null }>;
+  teamFlags?: Record<string, string>;
 }
 
 // Fallbacks for when the source omits a channel's colours.
 const DEFAULT_CHANNEL_BG = '#374151';
 const DEFAULT_CHANNEL_FG = '#ffffff';
 
-export default function MatchList({ matches, teamOwners }: MatchListProps) {
+export default function MatchList({ matches, teamOwners, teamFlags }: MatchListProps) {
   const statusBadge = (status: string) => {
     switch (status) {
       case 'LIVE':
@@ -47,17 +48,20 @@ export default function MatchList({ matches, teamOwners }: MatchListProps) {
             <div>{formatMatchTime(match.datetime)}</div>
           </div>
 
-          <div className="flex-1 flex items-center gap-1 min-w-0">
-            <div className="flex-1 flex items-center gap-1 justify-end min-w-0">
+          <div className="flex-1 flex items-start gap-1 min-w-0">
+            <div className="flex-1 min-w-0 text-right">
+              <div className="flex items-center justify-end gap-1">
+                {teamFlags?.[match.homeTeam] && (
+                  <span className="text-base leading-none">{teamFlags[match.homeTeam]}</span>
+                )}
+                <span className="text-sm font-medium">{match.homeTeam}</span>
+              </div>
               {teamOwners?.[match.homeTeam] && (
-                <>
-                  <span className="text-[10px] text-white/70 truncate">
-                    {teamOwners[match.homeTeam].name}
-                  </span>
+                <div className="flex items-center justify-end gap-1 min-w-0 text-[11px] text-gold/80">
                   <Avatar name={teamOwners[match.homeTeam].name} size="sm" />
-                </>
+                  <span className="truncate">({teamOwners[match.homeTeam].name})</span>
+                </div>
               )}
-              <span className="text-sm font-medium shrink-0">{match.homeTeam}</span>
             </div>
 
             <div className="w-12 shrink-0 text-center">
@@ -70,15 +74,18 @@ export default function MatchList({ matches, teamOwners }: MatchListProps) {
               )}
             </div>
 
-            <div className="flex-1 flex items-center gap-1 min-w-0">
-              <span className="text-sm font-medium shrink-0">{match.awayTeam}</span>
+            <div className="flex-1 min-w-0 text-left">
+              <div className="flex items-center gap-1">
+                <span className="text-sm font-medium">{match.awayTeam}</span>
+                {teamFlags?.[match.awayTeam] && (
+                  <span className="text-base leading-none">{teamFlags[match.awayTeam]}</span>
+                )}
+              </div>
               {teamOwners?.[match.awayTeam] && (
-                <>
+                <div className="flex items-center gap-1 min-w-0 text-[11px] text-gold/80">
+                  <span className="truncate">({teamOwners[match.awayTeam].name})</span>
                   <Avatar name={teamOwners[match.awayTeam].name} size="sm" />
-                  <span className="text-[10px] text-white/70 truncate">
-                    {teamOwners[match.awayTeam].name}
-                  </span>
-                </>
+                </div>
               )}
             </div>
           </div>

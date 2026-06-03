@@ -65,22 +65,30 @@ describe('MatchList', () => {
     expect(container).toBeInTheDocument();
   });
 
-  it('shows team owner initials when teamOwners provided', () => {
+  it('shows the team owner name in brackets when teamOwners provided', () => {
     const matches = [makeMatch({ homeTeam: 'ENG' })];
     const teamOwners = { ENG: { name: 'Alice', imageUrl: null } };
     render(<MatchList matches={matches} teamOwners={teamOwners} />);
-    expect(screen.getByText('A')).toBeInTheDocument();
+    expect(screen.getByText('(Alice)')).toBeInTheDocument();
   });
 
-  it('shows full team owner name next to team code', () => {
+  it('shows team flags when teamFlags provided', () => {
+    const matches = [makeMatch({ homeTeam: 'ENG', awayTeam: 'BRA' })];
+    const teamFlags = { ENG: '🏴', BRA: '🇧🇷' };
+    render(<MatchList matches={matches} teamFlags={teamFlags} />);
+    expect(screen.getByText('🏴')).toBeInTheDocument();
+    expect(screen.getByText('🇧🇷')).toBeInTheDocument();
+  });
+
+  it('shows both team owners under their team codes', () => {
     const matches = [makeMatch({ homeTeam: 'ENG', awayTeam: 'BRA' })];
     const teamOwners = {
       ENG: { name: 'Alice', imageUrl: null },
       BRA: { name: 'Bob', imageUrl: null },
     };
     render(<MatchList matches={matches} teamOwners={teamOwners} />);
-    expect(screen.getByText('Alice')).toBeInTheDocument();
-    expect(screen.getByText('Bob')).toBeInTheDocument();
+    expect(screen.getByText('(Alice)')).toBeInTheDocument();
+    expect(screen.getByText('(Bob)')).toBeInTheDocument();
   });
 
   it('renders broadcast channel pills when channels are present', () => {

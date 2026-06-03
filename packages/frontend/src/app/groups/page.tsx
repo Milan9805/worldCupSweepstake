@@ -73,6 +73,11 @@ export default function GroupsPage() {
     });
   }
 
+  // Team code → flag, so fixtures can show flags alongside the codes.
+  const teamFlags: Record<string, string> = Object.fromEntries(
+    teams.map((t) => [t.teamCode, t.flag]),
+  );
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -178,7 +183,7 @@ export default function GroupsPage() {
 
         {/* Fixtures */}
         <h2 className="text-lg font-bold mb-4">Fixtures - Group {selectedGroup}</h2>
-        <MatchList matches={groupMatches} teamOwners={teamOwners} />
+        <MatchList matches={groupMatches} teamOwners={teamOwners} teamFlags={teamFlags} />
 
         {groupMatches.length === 0 && (
           <div className="text-center text-green-200 py-8">
