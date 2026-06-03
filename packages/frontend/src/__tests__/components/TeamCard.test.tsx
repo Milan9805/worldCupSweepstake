@@ -50,11 +50,10 @@ describe('TeamCard', () => {
     expect(screen.getByText('+4')).toBeInTheDocument(); // GD
   });
 
-  it('shows eliminated badge when eliminated', () => {
+  it('shows where an eliminated team went out via the progress pill', () => {
     const team = makeTeam({ eliminated: true, eliminatedAt: 'ROUND_OF_16' });
-    render(<TeamCard team={team} />);
-    expect(screen.getByText(/Eliminated/)).toBeInTheDocument();
-    expect(screen.getByText(/ROUND OF 16/)).toBeInTheDocument();
+    render(<TeamCard team={team} progress={{ label: 'Out · Round of 16', tone: 'OUT' }} />);
+    expect(screen.getByText('Out · Round of 16')).toBeInTheDocument();
   });
 
   it('shows owner name initial when provided', () => {
@@ -83,9 +82,14 @@ describe('TeamCard', () => {
     expect(screen.getByText('-4')).toBeInTheDocument();
   });
 
-  it('shows group position when provided', () => {
-    render(<TeamCard team={makeTeam()} groupPosition={1} totalInGroup={4} />);
-    expect(screen.getByText(/1st in group/)).toBeInTheDocument();
+  it('shows the progress pill when provided', () => {
+    render(<TeamCard team={makeTeam()} progress={{ label: '1st in group', tone: 'QUALIFY' }} />);
+    expect(screen.getByText('1st in group')).toBeInTheDocument();
+  });
+
+  it('shows the current knockout round on the progress pill', () => {
+    render(<TeamCard team={makeTeam()} progress={{ label: 'Round of 16', tone: 'ADVANCED' }} />);
+    expect(screen.getByText('Round of 16')).toBeInTheDocument();
   });
 
   describe('match info footer', () => {

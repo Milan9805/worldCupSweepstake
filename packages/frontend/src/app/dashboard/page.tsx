@@ -8,7 +8,7 @@ import TeamCard from '@/components/TeamCard';
 import Leaderboard from '@/components/Leaderboard';
 import { useGroup } from '@/hooks/useGroup';
 import { getTeamMatchInfo, compareTeamsByMatch } from '@/lib/teamMatches';
-import { calculateLeaderboard, Team } from '@sweepstake/shared';
+import { calculateLeaderboard, teamProgress, Team } from '@sweepstake/shared';
 
 export default function DashboardPage() {
   const { groupKey, group, teams, matches, loading, loadData } = useGroup();
@@ -119,7 +119,7 @@ export default function DashboardPage() {
                 <TeamCard
                   key={team.teamCode}
                   team={team}
-                  groupPosition={getGroupPosition(team, teams)}
+                  progress={teamProgress(team, getGroupPosition(team, teams), matches)}
                   matchInfo={matchInfo}
                   teamsByCode={teamsByCode}
                   ownersByTeam={ownersByTeam}

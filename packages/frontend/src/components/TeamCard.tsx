@@ -1,6 +1,6 @@
 'use client';
 
-import { Match, Team } from '@sweepstake/shared';
+import { Match, Team, ProgressTone, TeamProgress } from '@sweepstake/shared';
 import { TeamMatchInfo } from '@/lib/teamMatches';
 import { formatMatchDate, formatMatchTime } from '@/lib/format';
 import Avatar from '@/components/Avatar';
@@ -9,18 +9,29 @@ import Avatar from '@/components/Avatar';
 const DEFAULT_CHANNEL_BG = '#374151';
 const DEFAULT_CHANNEL_FG = '#ffffff';
 
+// Pill colours per tournament-progress tone. Group-stage tones keep the
+// original green/amber/red; alive-in-knockouts is a brighter emerald and the
+// champion gets gold.
+const PROGRESS_TONE_CLASSES: Record<ProgressTone, string> = {
+  QUALIFY: 'bg-green-700/60 text-green-200',
+  THIRD: 'bg-yellow-700/60 text-yellow-200',
+  BOTTOM: 'bg-red-800/60 text-red-200',
+  ADVANCED: 'bg-emerald-500/80 text-white',
+  CHAMPION: 'bg-gold/90 text-black',
+  OUT: 'bg-red-900/60 text-red-200',
+};
+
 interface TeamCardProps {
   team: Team;
   ownerName?: string;
   ownerImage?: string | null;
-  groupPosition?: number;
-  totalInGroup?: number;
+  progress?: TeamProgress;
   matchInfo?: TeamMatchInfo;
   teamsByCode?: Record<string, Team>;
   ownersByTeam?: Record<string, { name: string; imageUrl: string | null }>;
 }
 
-export default function TeamCard({ team, ownerName, ownerImage, groupPosition, totalInGroup: _totalInGroup, matchInfo, teamsByCode, ownersByTeam }: TeamCardProps) {
+export default function TeamCard({ team, ownerName, ownerImage, progress, matchInfo, teamsByCode, ownersByTeam }: TeamCardProps) {
   return (
     <div
       className={`rounded-lg border p-4 transition-all ${
@@ -38,24 +49,12 @@ export default function TeamCard({ team, ownerName, ownerImage, groupPosition, t
               Group {team.groupLetter} • #{team.fifaRanking}
             </span>
           </div>
-          {groupPosition && (
-            <span className={`ml-2 text-xs font-bold px-2 py-0.5 rounded ${
-              groupPosition <= 2 ? 'bg-green-700/60 text-green-200' :
-              groupPosition === 3 ? 'bg-yellow-700/60 text-yellow-200' :
-              'bg-red-800/60 text-red-200'
-            }`}>
-              {team.eliminated
-                ? team.eliminatedAt?.replace(/_/g, ' ') || 'Out'
-                : `${getOrdinal(groupPosition)} in group`}
+          {progress && (
+            <span className={`ml-2 text-xs font-bold px-2 py-0.5 rounded ${PROGRESS_TONE_CLASSES[progress.tone]}`}>
+              {progress.label}
             </span>
           )}
         </div>
-        {team.eliminated && (
-          <span className="text-xs bg-red-900/50 text-red-300 px-2 py-1 rounded">
-            Eliminated
-            {team.eliminatedAt && ` (${team.eliminatedAt.replace(/_/g, ' ')})`}
-          </span>
-        )}
         {ownerName && (
           <div className="flex items-center gap-1">
             <Avatar name={ownerName} imageUrl={ownerImage} size="md" />
@@ -217,10 +216,4 @@ function ResultTag({ team, match }: { team: Team; match: Match }) {
   return (
     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${colour}`}>{outcome}</span>
   );
-}
-
-function getOrdinal(n: number): string {
-  const s = ['th', 'st', 'nd', 'rd'];
-  const v = n % 100;
-  return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
