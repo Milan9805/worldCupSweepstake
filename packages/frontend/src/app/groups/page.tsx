@@ -5,7 +5,17 @@ import { useRouter } from 'next/navigation';
 import NavBar from '@/components/NavBar';
 import MatchList from '@/components/MatchList';
 import { getMatches, getTeams, getGroup } from '@/lib/api';
-import { Match, Team, Group } from '@sweepstake/shared';
+import { Match, Team, Group, GroupZone, groupZones } from '@sweepstake/shared';
+
+// Left accent bar + subtle fill per qualification zone. Bright emerald/amber
+// reads clearly against the dark-green app background; a confirmed (clinched)
+// top-two place gets a stronger green than a place that's only live.
+const ZONE_CLASSES: Record<GroupZone, string> = {
+  QUALIFIED: 'border-l-emerald-400 bg-emerald-400/15',
+  TOP_TWO: 'border-l-emerald-400/40 bg-emerald-400/5',
+  THIRD: 'border-l-amber-400/70 bg-amber-400/10',
+  NONE: 'border-l-transparent',
+};
 
 export default function GroupsPage() {
   const [matches, setMatches] = useState<Match[]>([]);
@@ -45,6 +55,9 @@ export default function GroupsPage() {
   const groupTeams = teams
     .filter((t) => t.groupLetter === selectedGroup)
     .sort((a, b) => b.stats.points - a.stats.points || b.stats.goalDifference - a.stats.goalDifference);
+
+  // Qualification zone per team (confirmed top two, live top two, third, out).
+  const zones = groupZones(groupTeams);
 
   const groupMatches = matches
     .filter((m) => m.group === selectedGroup)
@@ -118,8 +131,8 @@ export default function GroupsPage() {
               {groupTeams.map((team, idx) => (
                 <tr
                   key={team.teamCode}
-                  className={`border-b border-white/5 ${
-                    idx < 2 ? 'bg-green-900/10' : idx === 2 ? 'bg-yellow-900/10' : ''
+                  className={`border-b border-b-white/5 border-l-4 ${
+                    ZONE_CLASSES[zones.get(team.teamCode) ?? 'NONE']
                   }`}
                 >
                   <td className="py-2 px-4">{idx + 1}</td>
@@ -145,6 +158,22 @@ export default function GroupsPage() {
               ))}
             </tbody>
           </table>
+        </div>
+
+        {/* Qualification key */}
+        <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-green-200 mb-6">
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-3 h-3 rounded-sm bg-emerald-400" />
+            Qualified
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-3 h-3 rounded-sm bg-emerald-400/40" />
+            Qualifying spot
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-3 h-3 rounded-sm bg-amber-400/70" />
+            3rd place
+          </span>
         </div>
 
         {/* Fixtures */}
