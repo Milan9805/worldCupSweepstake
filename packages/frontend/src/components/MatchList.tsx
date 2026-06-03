@@ -41,8 +41,9 @@ export default function MatchList({ matches, teamOwners }: MatchListProps) {
           className="flex flex-col gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-all"
         >
           <div className="flex items-center gap-2">
-          <div className="text-xs text-white/70 w-16 shrink-0 text-center">
-            <div>{formatMatchDate(match.datetime)}</div>
+          {/* Date — fixed width, forced onto one line so every row is consistently two lines */}
+          <div className="w-16 shrink-0 text-center text-xs leading-tight text-white/70">
+            <div className="whitespace-nowrap">{formatMatchDate(match.datetime).replace(',', '')}</div>
             <div>{formatMatchTime(match.datetime)}</div>
           </div>
 
@@ -59,7 +60,7 @@ export default function MatchList({ matches, teamOwners }: MatchListProps) {
               <span className="text-sm font-medium shrink-0">{match.homeTeam}</span>
             </div>
 
-            <div className="w-14 shrink-0 text-center">
+            <div className="w-12 shrink-0 text-center">
               {match.status === 'SCHEDULED' ? (
                 <span className="text-white/70 text-sm">vs</span>
               ) : (
@@ -82,11 +83,10 @@ export default function MatchList({ matches, teamOwners }: MatchListProps) {
             </div>
           </div>
 
-          {statusBadge(match.status) && (
-            <div className="shrink-0 text-right text-xs">
-              {statusBadge(match.status)}
-            </div>
-          )}
+          {/* Mirrors the date column's width so the match block stays centred in the row */}
+          <div className="w-16 shrink-0 text-right text-xs">
+            {statusBadge(match.status)}
+          </div>
           </div>
 
           {match.channels && match.channels.length > 0 && (
