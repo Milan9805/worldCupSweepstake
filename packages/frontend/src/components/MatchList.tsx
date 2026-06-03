@@ -40,26 +40,26 @@ export default function MatchList({ matches, teamOwners }: MatchListProps) {
           key={match.matchId}
           className="flex flex-col gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-all"
         >
-          <div className="flex items-center gap-3">
-          <div className="text-xs text-white/70 w-20 text-center">
+          <div className="flex items-center gap-2">
+          <div className="text-xs text-white/70 w-16 shrink-0 text-center">
             <div>{formatMatchDate(match.datetime)}</div>
             <div>{formatMatchTime(match.datetime)}</div>
           </div>
 
-          <div className="flex-1 flex items-center justify-center gap-2">
-            <div className="flex items-center gap-1 w-28 justify-end">
+          <div className="flex-1 flex items-center gap-1 min-w-0">
+            <div className="flex-1 flex items-center gap-1 justify-end min-w-0">
               {teamOwners?.[match.homeTeam] && (
                 <>
-                  <span className="text-[10px] text-white/70 truncate max-w-[60px]">
+                  <span className="text-[10px] text-white/70 truncate">
                     {teamOwners[match.homeTeam].name}
                   </span>
                   <Avatar name={teamOwners[match.homeTeam].name} size="sm" />
                 </>
               )}
-              <span className="text-sm font-medium">{match.homeTeam}</span>
+              <span className="text-sm font-medium shrink-0">{match.homeTeam}</span>
             </div>
 
-            <div className="w-20 text-center">
+            <div className="w-14 shrink-0 text-center">
               {match.status === 'SCHEDULED' ? (
                 <span className="text-white/70 text-sm">vs</span>
               ) : (
@@ -69,12 +69,12 @@ export default function MatchList({ matches, teamOwners }: MatchListProps) {
               )}
             </div>
 
-            <div className="flex items-center gap-1 w-28">
-              <span className="text-sm font-medium">{match.awayTeam}</span>
+            <div className="flex-1 flex items-center gap-1 min-w-0">
+              <span className="text-sm font-medium shrink-0">{match.awayTeam}</span>
               {teamOwners?.[match.awayTeam] && (
                 <>
                   <Avatar name={teamOwners[match.awayTeam].name} size="sm" />
-                  <span className="text-[10px] text-white/70 truncate max-w-[60px]">
+                  <span className="text-[10px] text-white/70 truncate">
                     {teamOwners[match.awayTeam].name}
                   </span>
                 </>
@@ -82,9 +82,11 @@ export default function MatchList({ matches, teamOwners }: MatchListProps) {
             </div>
           </div>
 
-          <div className="w-20 text-right text-xs">
-            {statusBadge(match.status)}
-          </div>
+          {statusBadge(match.status) && (
+            <div className="shrink-0 text-right text-xs">
+              {statusBadge(match.status)}
+            </div>
+          )}
           </div>
 
           {match.channels && match.channels.length > 0 && (
