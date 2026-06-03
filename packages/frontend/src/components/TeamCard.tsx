@@ -134,7 +134,7 @@ function MatchInfoFooter({
   return (
     <div className="mt-3 pt-3 border-t border-white/10 space-y-1.5 text-xs">
       {live ? (
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center justify-center gap-2 flex-wrap">
           <span className="bg-red-600 text-white text-[10px] px-2 py-0.5 rounded animate-pulse shrink-0">
             LIVE
           </span>
@@ -146,7 +146,7 @@ function MatchInfoFooter({
       ) : (
         <>
           {previous && (
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center justify-center gap-2 flex-wrap">
               <span className="text-white/70 w-9 shrink-0">Last</span>
               <span className="text-white">
                 {previous.homeTeam} {previous.homeScore} - {previous.awayScore}{' '}
@@ -158,7 +158,7 @@ function MatchInfoFooter({
           )}
           {next && (
             <div className="space-y-1.5">
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center justify-center gap-2 flex-wrap">
                 <span className="text-white/70 w-9 shrink-0">Next</span>
                 <span className="text-white">
                   vs {opponentLabel(next)} · {formatMatchDate(next.datetime)},{' '}
