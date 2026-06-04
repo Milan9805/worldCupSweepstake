@@ -90,8 +90,10 @@ export default function MatchList({ matches, teamOwners, teamFlags }: MatchListP
             </div>
           </div>
 
-          {/* Mirrors the date column's width so the match block stays centred in the row */}
-          <div className="w-16 shrink-0 text-right text-xs">
+          {/* Mirrors the date column's width on sm+ to keep the match block centred.
+              On mobile it collapses to the badge width (0 when SCHEDULED) so the
+              owner names aren't starved of horizontal space. */}
+          <div className="w-auto shrink-0 text-right text-xs sm:w-16">
             {statusBadge(match.status)}
           </div>
           </div>
