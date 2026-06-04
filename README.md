@@ -268,7 +268,7 @@ with Android Studio. First deploy the site (see
 and confirm it's installable (Step 1).
 
 **a. Get the unsigned APK.** At [pwabuilder.com](https://www.pwabuilder.com)
-enter your live URL (the CloudFront URL — see `DEPLOY.local.md`) → **Package for
+enter your live URL (the CloudFront URL) → **Package for
 stores → Android**. Set a permanent reverse-DNS **Package ID**
 (`com.makwana.sweepstake` — never change it; it's half of the asset-links
 pairing) and **Download Package**. The bundled `…-unsigned.apk` is all you need.
