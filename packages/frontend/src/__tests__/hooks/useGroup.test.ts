@@ -54,6 +54,55 @@ describe('useGroup', () => {
     expect(mockLocalStorage.setItem).toHaveBeenCalledWith('sweepstake_group_key', 'test');
   });
 
+  it('login resolves a typed name (any case) to the canonical member and claims it', async () => {
+    const groupData = {
+      groupKey: 'test',
+      groupName: 'Test',
+      members: [
+        { name: 'Dan', imageUrl: null, teams: ['ENG'] },
+        { name: 'Ben', imageUrl: null, teams: ['CRO'] },
+      ],
+    };
+    mockedApi.getGroup.mockResolvedValue(groupData);
+
+    const { result } = renderHook(() => useGroup());
+
+    await act(async () => {
+      await result.current.login('test', { personName: '  dan  ' });
+    });
+
+    // Stored as the canonical member name, not what was typed.
+    expect(result.current.claimedPerson).toBe('Dan');
+    expect(result.current.groupKey).toBe('test');
+  });
+
+  it('login rejects a name that is not a group member and does not register the group', async () => {
+    // Mount clean: no legacy key to migrate (a prior test leaves a sticky
+    // getItem return value that clearAllMocks doesn't reset).
+    mockLocalStorage.getItem.mockReturnValue(null);
+    const groupData = {
+      groupKey: 'test',
+      groupName: 'Test',
+      members: [{ name: 'Dan', imageUrl: null, teams: ['ENG'] }],
+    };
+    mockedApi.getGroup.mockResolvedValue(groupData);
+
+    const { result } = renderHook(() => useGroup());
+
+    await act(async () => {
+      await expect(
+        result.current.login('test', { personName: 'Zzz' })
+      ).rejects.toThrow(/isn't a member of this group/i);
+    });
+
+    // The error does NOT leak the group's members, and the group was NOT
+    // registered/activated.
+    expect(result.current.error).toMatch(/isn't a member of this group/i);
+    expect(result.current.error).not.toMatch(/Dan/);
+    expect(result.current.activeGroupKey).toBeNull();
+    expect(result.current.claimedPerson).toBeNull();
+  });
+
   it('login sets error on failure', async () => {
     mockedApi.getGroup.mockRejectedValue(new Error('Invalid group key'));
 
@@ -161,6 +210,90 @@ describe('useGroup', () => {
 
     expect(consoleSpy).toHaveBeenCalled();
     consoleSpy.mockRestore();
+  });
+
+  it('switchGroup activates another remembered group without re-login', async () => {
+    // Clean mount (no sticky legacy key) so the registry starts empty.
+    mockLocalStorage.getItem.mockReturnValue(null);
+    mockedApi.getGroup.mockImplementation(async (key: string) => ({
+      groupKey: key,
+      groupName: `Name ${key}`,
+      members: [],
+    }) as never);
+
+    const { result } = renderHook(() => useGroup());
+
+    // Remember two groups; the most recent login is active.
+    await act(async () => {
+      await result.current.login('group-a');
+    });
+    await act(async () => {
+      await result.current.login('group-b');
+    });
+    expect(result.current.activeGroupKey).toBe('group-b');
+    expect(result.current.knownGroups).toHaveLength(2);
+
+    act(() => {
+      result.current.switchGroup('group-a');
+    });
+
+    expect(result.current.groupKey).toBe('group-a');
+    expect(result.current.activeGroupKey).toBe('group-a');
+    // The active group's data is cleared so consumers refetch.
+    expect(result.current.group).toBeNull();
+  });
+
+  it('switchGroup is a no-op for an unknown group key', async () => {
+    mockLocalStorage.getItem.mockReturnValue(null);
+    mockedApi.getGroup.mockResolvedValue({ groupKey: 'group-a', groupName: 'A', members: [] });
+
+    const { result } = renderHook(() => useGroup());
+
+    await act(async () => {
+      await result.current.login('group-a');
+    });
+
+    act(() => {
+      result.current.switchGroup('not-a-group');
+    });
+
+    // Active group unchanged.
+    expect(result.current.activeGroupKey).toBe('group-a');
+    expect(result.current.groupKey).toBe('group-a');
+  });
+
+  it('claimPerson records the device owner in the active group', async () => {
+    mockLocalStorage.getItem.mockReturnValue(null);
+    mockedApi.getGroup.mockResolvedValue({
+      groupKey: 'group-a',
+      groupName: 'A',
+      members: [{ name: 'Alice', imageUrl: null, teams: ['ENG'] }],
+    });
+
+    const { result } = renderHook(() => useGroup());
+
+    await act(async () => {
+      await result.current.login('group-a');
+    });
+    expect(result.current.claimedPerson).toBeNull();
+
+    act(() => {
+      result.current.claimPerson('Alice');
+    });
+
+    expect(result.current.claimedPerson).toBe('Alice');
+  });
+
+  it('claimPerson is a no-op when there is no active group key', () => {
+    mockLocalStorage.getItem.mockReturnValue(null);
+
+    const { result } = renderHook(() => useGroup());
+
+    act(() => {
+      result.current.claimPerson('Alice');
+    });
+
+    expect(result.current.claimedPerson).toBeNull();
   });
 
   it('applyRefresh updates matches and teams from a refresh response', () => {

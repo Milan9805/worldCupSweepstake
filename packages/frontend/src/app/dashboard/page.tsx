@@ -3,15 +3,19 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import NavBar from '@/components/NavBar';
-import Avatar from '@/components/Avatar';
 import TeamCard from '@/components/TeamCard';
 import Leaderboard from '@/components/Leaderboard';
+import PersonClaim from '@/components/PersonClaim';
 import { useGroup } from '@/hooks/useGroup';
 import { getTeamMatchInfo, compareTeamsByMatch } from '@/lib/teamMatches';
 import { calculateLeaderboard, teamProgress, Team } from '@sweepstake/shared';
 
 export default function DashboardPage() {
-  const { groupKey, group, teams, matches, loading, loadData, applyRefresh } = useGroup();
+  const { groupKey, group, teams, matches, loading, loadData, applyRefresh, claimedPerson } =
+    useGroup();
+  // Which member the dashboard is viewing. Defaults to the claimed identity (who
+  // you logged in as) but can be switched freely to browse other people's teams.
+  // Switching the view does NOT change your identity — that's set at login.
   const [selectedPerson, setSelectedPerson] = useState<string>('');
   const router = useRouter();
 
@@ -26,11 +30,23 @@ export default function DashboardPage() {
     loadData();
   }, [groupKey]);
 
+  // Seed the in-view selection from the claimed person (or the first member as a
+  // fallback) once data is available, and reset it when switching groups.
   useEffect(() => {
-    if (group?.members?.length && !selectedPerson) {
-      setSelectedPerson(group.members[0].name);
+    if (group?.members?.length) {
+      const valid = group.members.some((m) => m.name === selectedPerson);
+      if (!valid) {
+        setSelectedPerson(claimedPerson ?? group.members[0].name);
+      }
     }
-  }, [group, selectedPerson]);
+  }, [group, claimedPerson, selectedPerson]);
+
+  // View-only: tapping a person just changes whose teams are shown. It does NOT
+  // re-claim your identity (so the list never re-sorts and the feed keeps using
+  // who you logged in as). To change identity, log in again.
+  const handleSelect = (name: string) => {
+    setSelectedPerson(name);
+  };
 
   if (loading && !group) {
     return (
@@ -53,6 +69,15 @@ export default function DashboardPage() {
     .map((team) => ({ team, matchInfo: getTeamMatchInfo(team.teamCode, matches) }))
     .sort((a, b) => compareTeamsByMatch(a.matchInfo, b.matchInfo));
 
+  // Show the claimed person (the device owner's identity) first in the selector,
+  // keeping everyone else in their original order.
+  const orderedMembers = claimedPerson
+    ? [
+        ...group.members.filter((m) => m.name === claimedPerson),
+        ...group.members.filter((m) => m.name !== claimedPerson),
+      ]
+    : group.members;
+
   const leaderboard = calculateLeaderboard(group.members, teams);
 
   const teamsByCode = Object.fromEntries(teams.map((t) => [t.teamCode, t]));
@@ -73,23 +98,14 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           {/* Main content */}
           <div className="lg:col-span-3">
-            {/* Person selector */}
-            <div className="flex items-center gap-3 mb-6 overflow-x-auto pb-2">
-              {group.members.map((member) => (
-                <button
-                  key={member.name}
-                  onClick={() => setSelectedPerson(member.name)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-                    selectedPerson === member.name
-                      ? 'bg-accent text-white'
-                      : 'bg-black/30 text-white hover:bg-black/40'
-                  }`}
-                >
-                  <Avatar name={member.name} imageUrl={member.imageUrl} size="md" />
-                  {member.name}
-                </button>
-              ))}
-            </div>
+            {/* Per-group identity: prompts "Who are you?" until claimed, then
+                doubles as the person selector (claiming persists the choice). */}
+            <PersonClaim
+              members={orderedMembers}
+              claimedPerson={selectedPerson || claimedPerson}
+              onClaim={handleSelect}
+              allowSwitch
+            />
 
             {/* Stats summary */}
             {person && (

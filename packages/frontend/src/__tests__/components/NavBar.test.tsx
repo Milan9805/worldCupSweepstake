@@ -12,6 +12,18 @@ jest.mock('../../hooks/useRefresh', () => ({
   }),
 }));
 
+// Mock the identity hook (groups + active group key drive the brand link).
+jest.mock('../../hooks/useIdentity', () => ({
+  useIdentity: () => ({ groups: mockGroups, activeGroupKey: mockActiveGroupKey }),
+}));
+
+// Stub the GroupSwitcher (it has its own hooks/tests).
+jest.mock('../../components/GroupSwitcher', () => {
+  return function MockGroupSwitcher() {
+    return <div data-testid="group-switcher" />;
+  };
+});
+
 // Mock next/link
 jest.mock('next/link', () => {
   return ({ href, children, ...props }: { href: string; children: React.ReactNode }) => (
@@ -22,12 +34,16 @@ jest.mock('next/link', () => {
 let mockRefresh: jest.Mock;
 let mockIsRefreshing: boolean;
 let mockSource: string | null;
+let mockGroups: Array<{ groupKey: string; groupName: string; person: string | null }>;
+let mockActiveGroupKey: string | null;
 
 describe('NavBar', () => {
   beforeEach(() => {
     mockRefresh = jest.fn();
     mockIsRefreshing = false;
     mockSource = null;
+    mockGroups = [];
+    mockActiveGroupKey = null;
   });
 
   it('renders the brand name', () => {
@@ -74,6 +90,18 @@ describe('NavBar', () => {
     expect(dashboardLink).toHaveAttribute('href', '/dashboard');
     const groupsLink = screen.getByText('Groups').closest('a');
     expect(groupsLink).toHaveAttribute('href', '/groups');
+  });
+
+  it('logo links to / when no group is active', () => {
+    render(<NavBar />);
+    expect(screen.getByText(/WC2026/).closest('a')).toHaveAttribute('href', '/');
+  });
+
+  it('logo links to /dashboard when a group is active', () => {
+    mockActiveGroupKey = 'lads-on-tour';
+    mockGroups = [{ groupKey: 'lads-on-tour', groupName: 'Lads on Tour', person: 'Dan' }];
+    render(<NavBar />);
+    expect(screen.getByText(/WC2026/).closest('a')).toHaveAttribute('href', '/dashboard');
   });
 
   it('shows "via BBC" badge when source is bbc', () => {

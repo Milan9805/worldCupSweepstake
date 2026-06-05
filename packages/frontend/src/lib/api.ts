@@ -1,4 +1,4 @@
-import { RefreshResponse } from '@sweepstake/shared';
+import { RefreshResponse, FeedEvent } from '@sweepstake/shared';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -34,6 +34,10 @@ export async function getTeams() {
 
 export async function getTree() {
   return fetchApi('/api/tree');
+}
+
+export async function getFeed() {
+  return fetchApi<FeedEvent[]>('/api/feed');
 }
 
 export async function refreshScores() {

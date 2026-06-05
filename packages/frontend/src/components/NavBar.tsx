@@ -4,6 +4,8 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { RefreshResponse } from '@sweepstake/shared';
 import { useRefresh } from '@/hooks/useRefresh';
+import GroupSwitcher from '@/components/GroupSwitcher';
+import { useIdentity } from '@/hooks/useIdentity';
 
 interface NavBarProps {
   groupName?: string;
@@ -12,13 +14,16 @@ interface NavBarProps {
 
 const NAV_LINKS = [
   { href: '/dashboard', label: 'Dashboard' },
+  { href: '/feed', label: 'Feed' },
   { href: '/groups', label: 'Groups' },
   { href: '/tree', label: 'Tree' },
+  { href: '/honours', label: 'Honours' },
   { href: '/admin', label: 'Admin' },
 ];
 
 export default function NavBar({ groupName, onRefreshed }: NavBarProps) {
   const { refresh, isRefreshing, source } = useRefresh(onRefreshed);
+  const { groups, activeGroupKey } = useIdentity();
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -26,11 +31,20 @@ export default function NavBar({ groupName, onRefreshed }: NavBarProps) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center gap-6">
-            <Link href="/" className="text-xl font-bold text-green-800 drop-shadow-sm">
+            {/* When a group is active, the logo is a shortcut back into the app
+                rather than a trip through the login screen. */}
+            <Link
+              href={activeGroupKey ? '/dashboard' : '/'}
+              className="text-xl font-bold text-green-800 drop-shadow-sm"
+            >
               ⚽ WC2026
             </Link>
-            {groupName && (
-              <span className="text-sm text-gray-500">{groupName}</span>
+            {/* Multi-group switcher once a group is registered on the device;
+                falls back to a static label otherwise (e.g. first paint). */}
+            {groups.length > 0 ? (
+              <GroupSwitcher />
+            ) : (
+              groupName && <span className="text-sm text-gray-500">{groupName}</span>
             )}
             <div className="hidden md:flex items-center gap-4">
               {NAV_LINKS.map((link) => (

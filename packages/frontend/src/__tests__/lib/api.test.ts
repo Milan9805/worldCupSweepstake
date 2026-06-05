@@ -84,6 +84,25 @@ describe('api lib', () => {
     });
   });
 
+  describe('getFeed', () => {
+    it('fetches feed events', async () => {
+      const events = [{ eventId: 'm1#GOAL#1-0', type: 'GOAL', ts: '2026-06-05T12:00:00Z', payload: {} }];
+      mockSuccessResponse(events);
+
+      const result = await api.getFeed();
+      expect(result).toEqual(events);
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/feed'),
+        expect.anything()
+      );
+    });
+
+    it('throws on error', async () => {
+      mockErrorResponse('Server error');
+      await expect(api.getFeed()).rejects.toThrow('Server error');
+    });
+  });
+
   describe('refreshScores', () => {
     it('posts to refresh endpoint', async () => {
       mockSuccessResponse({ matches: [], teams: [] });

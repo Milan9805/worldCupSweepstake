@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom';
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import DashboardPage from '../../app/dashboard/page';
 
 const mockPush = jest.fn();
@@ -11,6 +11,9 @@ let mockGroup: Record<string, unknown> | null = null;
 let mockTeams: unknown[] = [];
 const mockMatches: unknown[] = [];
 let mockLoading = false;
+let mockClaimedPerson: string | null = null;
+
+const mockClaimPerson = jest.fn();
 
 jest.mock('../../hooks/useGroup', () => ({
   useGroup: () => ({
@@ -20,6 +23,8 @@ jest.mock('../../hooks/useGroup', () => ({
     matches: mockMatches,
     loading: mockLoading,
     loadData: mockLoadData,
+    claimedPerson: mockClaimedPerson,
+    claimPerson: mockClaimPerson,
   }),
 }));
 
@@ -71,6 +76,7 @@ describe('DashboardPage', () => {
       { teamCode: 'GER', name: 'Germany', fifaRanking: 15, groupLetter: 'A', flag: '🇩🇪', eliminated: false, eliminatedAt: null, stats: { played: 3, wins: 1, draws: 1, losses: 1, goalsFor: 3, goalsAgainst: 3, goalDifference: 0, points: 4, yellowCards: 2, redCards: 0, possession: 55, xG: 3 } },
     ];
     mockLoading = false;
+    mockClaimedPerson = null;
   });
 
   it('renders dashboard with group data', () => {
@@ -83,6 +89,28 @@ describe('DashboardPage', () => {
     render(<DashboardPage />);
     expect(screen.getByText('Alice')).toBeInTheDocument();
     expect(screen.getByText('Bob')).toBeInTheDocument();
+  });
+
+  it('puts the claimed person first in the selector', () => {
+    mockClaimedPerson = 'Bob'; // Bob is the 2nd member in the seed order
+    render(<DashboardPage />);
+    const buttons = screen.getAllByRole('button');
+    // Claimed person (Bob) leads, the rest keep their original order.
+    expect(buttons[0]).toHaveTextContent('Bob');
+    expect(buttons[1]).toHaveTextContent('Alice');
+  });
+
+  it('tapping another person is view-only: does not re-claim identity and keeps the order fixed', () => {
+    mockClaimedPerson = 'Bob';
+    render(<DashboardPage />);
+    // Tap Alice (the second, non-claimed button).
+    fireEvent.click(screen.getAllByRole('button')[1]);
+    // Identity is not re-claimed...
+    expect(mockClaimPerson).not.toHaveBeenCalled();
+    // ...and the order stays pinned to the claimed person (Bob first).
+    const after = screen.getAllByRole('button');
+    expect(after[0]).toHaveTextContent('Bob');
+    expect(after[1]).toHaveTextContent('Alice');
   });
 
   it('shows loading state', () => {

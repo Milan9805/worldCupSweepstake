@@ -4,37 +4,115 @@ import { useState, useEffect, useCallback } from 'react';
 import { getGroup, getTeams, getMatches } from '@/lib/api';
 import { Group, Team, Match, RefreshResponse } from '@sweepstake/shared';
 import { usePollScores } from '@/hooks/usePollScores';
+import {
+  GroupRegistry,
+  readRegistry,
+  writeRegistry,
+  addGroupToRegistry,
+  setActiveGroup,
+  setClaimedPerson,
+  removeGroupFromRegistry,
+  ACTIVE_GROUP_KEY,
+} from '@/lib/groupRegistry';
 
 export function useGroup() {
   const [groupKey, setGroupKey] = useState<string | null>(null);
+  const [registry, setRegistry] = useState<GroupRegistry>({ active: null, groups: {} });
   const [group, setGroup] = useState<Group | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // On mount, load the known-groups registry, migrating a legacy single
+  // `sweepstake_group_key` user into it on first run. The active group's key is
+  // mirrored back to `sweepstake_group_key` so pages that still read that key
+  // directly (groups/tree/bracket) keep working without changes.
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('sweepstake_group_key');
-      if (stored) setGroupKey(stored);
-    }
+    if (typeof window === 'undefined') return;
+    const loaded = readRegistry();
+    setRegistry(loaded);
+    if (loaded.active) setGroupKey(loaded.active);
   }, []);
 
-  const login = useCallback(async (key: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await getGroup(key) as Group;
-      setGroup(data);
-      setGroupKey(key);
-      localStorage.setItem('sweepstake_group_key', key);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Invalid group key');
-      throw err;
-    } finally {
-      setLoading(false);
-    }
+  // Persist the registry and keep the legacy key mirrored to the active group.
+  const persistRegistry = useCallback((next: GroupRegistry) => {
+    setRegistry(next);
+    writeRegistry(next);
   }, []);
+
+  const login = useCallback(
+    async (key: string, opts?: { personName?: string; groupName?: string }) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const data = (await getGroup(key)) as Group;
+
+        // If a name was supplied at login it must match a group member
+        // (case-insensitive). Resolve it to the canonical member name and reject
+        // BEFORE registering, so a typo never half-joins the group.
+        let canonicalPerson: string | null = null;
+        const typed = opts?.personName?.trim();
+        if (typed) {
+          const member = data.members.find(
+            (m) => m.name.trim().toLowerCase() === typed.toLowerCase()
+          );
+          if (!member) {
+            // Don't reveal the group's members to whoever typed the name —
+            // just say it didn't match.
+            throw new Error(
+              `"${typed}" isn't a member of this group. Check the spelling of your name.`
+            );
+          }
+          canonicalPerson = member.name;
+        }
+
+        setGroup(data);
+        setGroupKey(key);
+        // Register (or refresh) the group, mark it active, and (if a name was
+        // resolved) claim it — all in one atomic registry write. Prefer the name
+        // returned by the API over any caller-supplied label.
+        setRegistry((prev) => {
+          const added = addGroupToRegistry(prev, key, data.groupName ?? opts?.groupName ?? key);
+          let next = setActiveGroup(added, key);
+          if (canonicalPerson) next = setClaimedPerson(next, key, canonicalPerson);
+          writeRegistry(next);
+          return next;
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Invalid group key');
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
+
+  // Add a group on a successful login (alias of login, named to match the
+  // multi-group registry vocabulary used by the landing page / useIdentity).
+  const addGroup = login;
+
+  // Switch the active group: persist the change and let the groupKey-driven
+  // effect in consumers refetch. No re-login needed — each key is remembered.
+  const switchGroup = useCallback(
+    (key: string) => {
+      if (!registry.groups[key]) return;
+      setGroupKey(key);
+      setGroup(null);
+      persistRegistry(setActiveGroup(registry, key));
+    },
+    [registry, persistRegistry]
+  );
+
+  // Record which member the device's owner is in the active group.
+  const claimPerson = useCallback(
+    (name: string) => {
+      if (!groupKey) return;
+      persistRegistry(setClaimedPerson(registry, groupKey, name));
+    },
+    [registry, groupKey, persistRegistry]
+  );
 
   const loadData = useCallback(async () => {
     if (!groupKey) return;
@@ -48,6 +126,14 @@ export function useGroup() {
       setGroup(groupData as Group);
       setTeams(teamsData as Team[]);
       setMatches(matchesData as Match[]);
+      // Keep the stored group name fresh in case it changed server-side.
+      setRegistry((prev) => {
+        const name = (groupData as Group).groupName;
+        if (!prev.groups[groupKey] || prev.groups[groupKey].groupName === name) return prev;
+        const next = addGroupToRegistry(prev, groupKey, name);
+        writeRegistry(next);
+        return next;
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
@@ -76,14 +162,33 @@ export function useGroup() {
     setTeams(result.teams);
   }, []);
 
+  // Log out of the active group: forget it (and clear identity), then fall back
+  // to another remembered group if there is one.
   const logout = useCallback(() => {
-    localStorage.removeItem('sweepstake_group_key');
-    setGroupKey(null);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(ACTIVE_GROUP_KEY);
+    }
+    setRegistry((prev) => {
+      if (!prev.active) return prev;
+      const next = removeGroupFromRegistry(prev, prev.active);
+      writeRegistry(next);
+      setGroupKey(next.active);
+      return next;
+    });
     setGroup(null);
   }, []);
 
   // Auto-update scores in the background while a match is live (no manual refresh).
   usePollScores(matches, refreshScoresData);
+
+  const knownGroups = Object.entries(registry.groups).map(([key, value]) => ({
+    groupKey: key,
+    groupName: value.groupName,
+    person: value.person ?? null,
+  }));
+
+  const activeGroupKey = registry.active;
+  const claimedPerson = (activeGroupKey && registry.groups[activeGroupKey]?.person) || null;
 
   return {
     groupKey,
@@ -93,9 +198,17 @@ export function useGroup() {
     loading,
     error,
     login,
+    addGroup,
+    switchGroup,
+    claimPerson,
     loadData,
     logout,
     refreshScoresData,
     applyRefresh,
+    // Multi-group registry surface.
+    knownGroups,
+    activeGroupKey,
+    claimedPerson,
+    active: { groupKey: activeGroupKey, personName: claimedPerson },
   };
 }
