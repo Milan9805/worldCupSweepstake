@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom';
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import GroupsPage from '../../app/groups/page';
 import * as api from '../../lib/api';
 
@@ -34,6 +34,10 @@ describe('GroupsPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockLocalStorage.getItem.mockReturnValue('test-group');
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('shows loading state initially', () => {
@@ -70,5 +74,21 @@ describe('GroupsPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Group Stages')).toBeInTheDocument();
     });
+  });
+
+  it('auto-refetches standings while a match is live', async () => {
+    jest.useFakeTimers();
+    const liveMatch = { matchId: '1', homeTeam: 'ENG', awayTeam: 'GER', homeScore: 1, awayScore: 0, status: 'LIVE', stage: 'GROUP_STAGE', group: 'A', datetime: '2026-06-14T18:00:00Z', venue: 'X' };
+    mockedApi.getMatches.mockResolvedValue([liveMatch]);
+    mockedApi.getTeams.mockResolvedValue([]);
+    mockedApi.getGroup.mockResolvedValue({ groupKey: 'test', groupName: 'T', members: [] });
+
+    render(<GroupsPage />);
+    await act(async () => {}); // flush the initial load
+
+    mockedApi.getMatches.mockClear();
+    await act(async () => { jest.advanceTimersByTime(30_000); });
+
+    expect(mockedApi.getMatches).toHaveBeenCalled();
   });
 });

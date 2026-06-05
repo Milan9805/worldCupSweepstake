@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import NavBar from '@/components/NavBar';
 import MatchList from '@/components/MatchList';
 import { getMatches, getTeams, getGroup } from '@/lib/api';
+import { usePollScores } from '@/hooks/usePollScores';
 import { Match, Team, Group, GroupZone, groupZones } from '@sweepstake/shared';
 
 // Left accent bar + subtle fill per qualification zone. Bright emerald/amber
@@ -50,6 +51,12 @@ export default function GroupsPage() {
       setLoading(false);
     }
   }
+
+  // Auto-refresh standings + scores in the background while a match is live.
+  usePollScores(matches, () => {
+    const key = localStorage.getItem('sweepstake_group_key');
+    if (key) loadData(key);
+  });
 
   const groupLetters = [...new Set(teams.map((t) => t.groupLetter))].sort();
   const groupTeams = teams

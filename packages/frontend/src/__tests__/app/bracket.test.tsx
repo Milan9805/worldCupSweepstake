@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom';
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import BracketPage from '../../app/bracket/page';
 import * as api from '../../lib/api';
 
@@ -39,6 +39,10 @@ describe('BracketPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockLocalStorage.getItem.mockReturnValue('test-group');
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('shows loading state initially', () => {
@@ -103,5 +107,21 @@ describe('BracketPage', () => {
       expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
     });
     consoleSpy.mockRestore();
+  });
+
+  it('auto-refetches the bracket while a knockout match is live', async () => {
+    jest.useFakeTimers();
+    const liveMatch = { matchId: '1', homeTeam: 'ENG', awayTeam: 'BRA', homeScore: 0, awayScore: 0, status: 'LIVE', stage: 'SEMI_FINAL', group: null, datetime: '2026-07-10T20:00:00Z', venue: 'Wembley' };
+    mockedApi.getTree.mockResolvedValue([]);
+    mockedApi.getGroup.mockResolvedValue({ groupKey: 'test', groupName: 'T', members: [] });
+    mockedApi.getMatches.mockResolvedValue([liveMatch]);
+
+    render(<BracketPage />);
+    await act(async () => {}); // flush the initial load
+
+    mockedApi.getMatches.mockClear();
+    await act(async () => { jest.advanceTimersByTime(30_000); });
+
+    expect(mockedApi.getMatches).toHaveBeenCalled();
   });
 });

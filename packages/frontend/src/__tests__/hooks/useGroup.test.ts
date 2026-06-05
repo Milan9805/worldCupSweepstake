@@ -115,4 +115,69 @@ describe('useGroup', () => {
 
     expect(result.current.error).toBe('Network error');
   });
+
+  it('refreshScoresData re-fetches only teams and matches', async () => {
+    mockLocalStorage.getItem.mockReturnValue('test');
+    mockedApi.getTeams.mockResolvedValue([{ teamCode: 'ENG' }]);
+    mockedApi.getMatches.mockResolvedValue([{ matchId: 'm1' }]);
+
+    const { result } = renderHook(() => useGroup());
+
+    await act(async () => {
+      await result.current.refreshScoresData();
+    });
+
+    expect(mockedApi.getTeams).toHaveBeenCalled();
+    expect(mockedApi.getMatches).toHaveBeenCalled();
+    expect(mockedApi.getGroup).not.toHaveBeenCalled();
+    expect(result.current.teams).toEqual([{ teamCode: 'ENG' }]);
+    expect(result.current.matches).toEqual([{ matchId: 'm1' }]);
+  });
+
+  it('refreshScoresData does nothing when there is no group key', async () => {
+    mockLocalStorage.getItem.mockReturnValue(null);
+
+    const { result } = renderHook(() => useGroup());
+
+    await act(async () => {
+      await result.current.refreshScoresData();
+    });
+
+    expect(mockedApi.getTeams).not.toHaveBeenCalled();
+    expect(mockedApi.getMatches).not.toHaveBeenCalled();
+  });
+
+  it('refreshScoresData logs and swallows fetch errors', async () => {
+    mockLocalStorage.getItem.mockReturnValue('test');
+    mockedApi.getTeams.mockRejectedValue(new Error('down'));
+    mockedApi.getMatches.mockResolvedValue([]);
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const { result } = renderHook(() => useGroup());
+
+    await act(async () => {
+      await result.current.refreshScoresData();
+    });
+
+    expect(consoleSpy).toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
+
+  it('applyRefresh updates matches and teams from a refresh response', () => {
+    mockLocalStorage.getItem.mockReturnValue('test');
+
+    const { result } = renderHook(() => useGroup());
+
+    act(() => {
+      result.current.applyRefresh({
+        matches: [{ matchId: 'x' }],
+        teams: [{ teamCode: 'GER' }],
+        source: 'api',
+        refreshedAt: '2026-06-14T18:00:00Z',
+      } as never);
+    });
+
+    expect(result.current.matches).toEqual([{ matchId: 'x' }]);
+    expect(result.current.teams).toEqual([{ teamCode: 'GER' }]);
+  });
 });

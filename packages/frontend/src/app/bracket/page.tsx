@@ -6,6 +6,7 @@ import NavBar from '@/components/NavBar';
 import TreeView from '@/components/BracketView';
 import MatchList from '@/components/MatchList';
 import { getTree, getGroup, getMatches } from '@/lib/api';
+import { usePollScores } from '@/hooks/usePollScores';
 import { TreeSlot, Group, Match } from '@sweepstake/shared';
 
 export default function TreePage() {
@@ -40,6 +41,12 @@ export default function TreePage() {
       setLoading(false);
     }
   }
+
+  // Auto-refresh knockout scores + bracket in the background while a match is live.
+  usePollScores(matches, () => {
+    const key = localStorage.getItem('sweepstake_group_key');
+    if (key) loadData(key);
+  });
 
   // Build team owners map
   const teamOwners: Record<string, { name: string; imageUrl: string | null }> = {};

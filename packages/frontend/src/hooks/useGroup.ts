@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { getGroup, getTeams, getMatches } from '@/lib/api';
-import { Group, Team, Match } from '@sweepstake/shared';
+import { Group, Team, Match, RefreshResponse } from '@sweepstake/shared';
+import { usePollScores } from '@/hooks/usePollScores';
 
 export function useGroup() {
   const [groupKey, setGroupKey] = useState<string | null>(null);
@@ -54,11 +55,47 @@ export function useGroup() {
     }
   }, [groupKey]);
 
+  // Lightweight background refresh: only the things that change during play
+  // (scores + team stats), without the heavier group fetch or a loading flash.
+  const refreshScoresData = useCallback(async () => {
+    if (!groupKey) return;
+    try {
+      const [teamsData, matchesData] = await Promise.all([getTeams(), getMatches()]);
+      setTeams(teamsData as Team[]);
+      setMatches(matchesData as Match[]);
+    } catch (err) {
+      // Polling failures are non-fatal — keep showing the last good data.
+      console.error('Score refresh failed:', err);
+    }
+  }, [groupKey]);
+
+  // Apply the result of a manual "Refresh Scores" so the view updates without a
+  // reload (the POST /refresh response already carries fresh matches + teams).
+  const applyRefresh = useCallback((result: RefreshResponse) => {
+    setMatches(result.matches);
+    setTeams(result.teams);
+  }, []);
+
   const logout = useCallback(() => {
     localStorage.removeItem('sweepstake_group_key');
     setGroupKey(null);
     setGroup(null);
   }, []);
 
-  return { groupKey, group, teams, matches, loading, error, login, loadData, logout };
+  // Auto-update scores in the background while a match is live (no manual refresh).
+  usePollScores(matches, refreshScoresData);
+
+  return {
+    groupKey,
+    group,
+    teams,
+    matches,
+    loading,
+    error,
+    login,
+    loadData,
+    logout,
+    refreshScoresData,
+    applyRefresh,
+  };
 }
