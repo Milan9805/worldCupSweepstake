@@ -2,7 +2,8 @@
 
 A serverless web application for managing sweepstake groups during the FIFA
 2026 Men's World Cup. Features per-person dashboards, group stage tables, a
-tournament bracket, and an admin panel.
+tournament bracket, a live activity feed, an honours board of side prizes,
+multi-group switching, and an admin panel.
 
 ## Architecture
 
@@ -141,10 +142,10 @@ reverted to the placeholder (see
 sweepstake/
 ├── packages/
 │   ├── frontend/          — Next.js app (static export)
-│   │   ├── src/app/       — Pages (/, /dashboard, /groups, /bracket, /admin)
+│   │   ├── src/app/       — Pages (/, /dashboard, /groups, /bracket, /feed, /honours, /admin)
 │   │   ├── src/components/— UI components
 │   │   ├── src/hooks/     — Custom React hooks
-│   │   └── src/lib/       — API client
+│   │   └── src/lib/       — API client + group/identity registry
 │   ├── api/               — Lambda handlers + Express local server
 │   │   ├── src/handlers/  — API endpoint handlers
 │   │   ├── src/clients/   — External API clients
@@ -153,7 +154,8 @@ sweepstake/
 │   └── shared/            — Shared types & utilities
 │       └── src/
 │           ├── types.ts   — TypeScript interfaces
-│           └── probability.ts — Win probability calculator
+│           ├── probability.ts — Win probability calculator
+│           └── honours.ts — Honours-board prize calculator
 ├── infrastructure/        — Terraform IaC
 │   ├── modules/           — Reusable Terraform modules
 │   └── environments/      — Per-environment configs
@@ -173,7 +175,8 @@ sweepstake/
 | GET | `/api/matches` | Get all matches |
 | GET | `/api/teams` | Get all teams with stats |
 | GET | `/api/bracket` | Get tournament bracket |
-| POST | `/api/refresh` | Refresh scores + TV channels (BBC fallback) |
+| GET | `/api/feed` | Recent activity-feed events (goals, kickoffs, results, eliminations) |
+| POST | `/api/refresh` | Refresh scores + TV channels (BBC fallback); also writes feed events |
 | POST | `/api/admin/login` | Admin authentication |
 | POST | `/api/admin/members` | Update group members |
 | POST | `/api/admin/assign` | Assign teams to people |
@@ -183,11 +186,57 @@ The refresh response is `{ matches, teams, source, refreshedAt }`.
 
 ## Pages
 
-- **/** — Entry page (group key login)
-- **/dashboard** — Per-person team dashboard with stats and leaderboard
+- **/** — Entry page: group key + your name, plus a "Continue to your group" shortcut for a remembered session
+- **/dashboard** — Per-person team dashboard with stats and leaderboard (you're pinned first; tap others to view their teams)
 - **/groups** — Group stage tables and fixtures
 - **/bracket** — Visual tournament bracket (R32 → Final)
+- **/feed** — Live activity feed (goals, kickoffs, full-time, eliminations) with your events highlighted
+- **/honours** — Honours board: side prizes derived from team stats
 - **/admin** — Admin panel (member management, team assignment, avatar upload)
+
+## Activity Feed, Honours Board & Identity
+
+### Identity & multiple sweepstakes
+
+- On the entry screen you enter the **group key and your name**. The name is
+  matched **case-insensitively** to a member of that group and stored in its
+  canonical form; a name that isn't a member is rejected (without revealing the
+  group's members).
+- Your identity and the groups you've joined live on the device in `localStorage`
+  (the `sweepstake_groups` registry in
+  [`packages/frontend/src/lib/groupRegistry.ts`](packages/frontend/src/lib/groupRegistry.ts))
+  — there are still no server-side user accounts. A legacy single-group key is
+  migrated into the registry automatically on first load.
+- A device can belong to **several groups**. The nav bar shows a **group
+  switcher**, the entry screen offers a one-tap **"Continue to your group"**
+  shortcut when a session is remembered, and the logo routes to the dashboard
+  while logged in.
+- Identity is set **at login only** (re-login to change it). On the dashboard you
+  can tap any member to view their teams — this is **view-only**, it never
+  changes who you are, and you stay pinned first in the list.
+
+### Live feed (`/feed`)
+
+- A chronological timeline of tournament events — **goals, kick-offs, full-time
+  results, eliminations, and bracket-drawn** — with team flags, scorelines, the
+  owning member shown in brackets, and relative timestamps that tick while the
+  page is open. Events involving **your** teams are highlighted.
+- Events are detected during `/api/refresh` by diffing each match's previous vs
+  new state
+  ([`packages/api/src/services/detectEvents.ts`](packages/api/src/services/detectEvents.ts)),
+  written to a dedicated DynamoDB **`Events`** table, and read back via
+  `GET /api/feed`. The change-detection that already decides what to persist
+  gives idempotency for free (no duplicate events), and the feed reuses the
+  adaptive score-poll cadence (30s while a match is live, off when idle).
+
+### Honours board (`/honours`)
+
+- Side prizes derived purely from the team stats already tracked — **Most Goals,
+  Best Defence, Cleanest, Dirtiest, Best Group-Stage Record, Deepest Run** —
+  aggregated per member, so everyone has something to play for even after their
+  teams are knocked out. Computed client-side
+  ([`packages/shared/src/honours.ts`](packages/shared/src/honours.ts)); no extra
+  fetching or endpoint.
 
 ## Deploying to AWS
 
@@ -482,10 +531,14 @@ when the channel list is unchanged.
 ## Key Design Decisions
 
 - **Winner takes all**: The person whose team wins the final wins the
-  sweepstake
-- **Manual refresh**: No real-time updates; user-triggered refresh button with
-  a 20s global cooldown. football-data.org is primary; BBC scraping is the
-  automatic fallback when the API errors
+  sweepstake. The **honours board** adds side prizes so eliminated players stay
+  in it
+- **Manual + background refresh**: a user-triggered refresh button with a 20s
+  global cooldown, plus a scheduled background refresh while matches are live.
+  football-data.org is primary; BBC scraping is the automatic fallback when the
+  API errors. Each refresh also derives **feed events** from the score diff
 - **Static export**: Frontend is pure static HTML/JS served from S3/CloudFront
-- **Shared group key**: Simple passphrase per group, no user accounts
+- **Shared group key + on-device identity**: a passphrase per group (no
+  server-side accounts); each device remembers who you are and which groups
+  you've joined in `localStorage`
 - **Admin auth**: Separate bcrypt-hashed secret, independent of group keys
