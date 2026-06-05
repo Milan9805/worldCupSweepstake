@@ -16,6 +16,12 @@ resource "aws_dynamodb_table" "groups" {
     type = "S"
   }
 
+  # Guard against accidental data loss: Terraform will hard-error rather than
+  # destroy/replace this table (which would wipe its data).
+  lifecycle {
+    prevent_destroy = true
+  }
+
   tags = {
     Environment = var.environment
     Project     = "sweepstake"
@@ -32,6 +38,10 @@ resource "aws_dynamodb_table" "matches" {
     type = "S"
   }
 
+  lifecycle {
+    prevent_destroy = true
+  }
+
   tags = {
     Environment = var.environment
     Project     = "sweepstake"
@@ -46,6 +56,10 @@ resource "aws_dynamodb_table" "teams" {
   attribute {
     name = "teamCode"
     type = "S"
+  }
+
+  lifecycle {
+    prevent_destroy = true
   }
 
   tags = {
@@ -70,6 +84,10 @@ resource "aws_dynamodb_table" "bracket" {
     type = "N"
   }
 
+  lifecycle {
+    prevent_destroy = true
+  }
+
   tags = {
     Environment = var.environment
     Project     = "sweepstake"
@@ -84,6 +102,10 @@ resource "aws_dynamodb_table" "config" {
   attribute {
     name = "configKey"
     type = "S"
+  }
+
+  lifecycle {
+    prevent_destroy = true
   }
 
   tags = {
