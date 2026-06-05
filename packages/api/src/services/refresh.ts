@@ -1,30 +1,37 @@
 import { fetchMatches } from '../clients/footballData';
 import { fetchBbcFixtures, buildBbcPatches } from '../clients/bbcScraper';
 import { fetchTvListings, buildChannelPatches } from '../clients/footballTvScraper';
-import { getAllMatches, getAllTeams, putMatch, getConfig, putConfig } from '../db/dynamodb';
+import { getAllMatches, getAllTeams, batchPutMatches, getConfig, putConfig } from '../db/dynamodb';
 import { Match, Team, RefreshSource, RefreshResponse, ChannelBroadcast } from '@sweepstake/shared';
 import { generateTreeIfReady, processKnockoutResults } from './generateTree';
 
 const REFRESH_COOLDOWN_MS = 20_000;
 
-export async function refreshData(): Promise<RefreshResponse> {
+/**
+ * @param preloadedMatches the current matches, if the caller already scanned
+ *   them (e.g. the scheduled handler checking the active-match window). Lets us
+ *   avoid a second full table scan; omitted by the HTTP handler.
+ */
+export async function refreshData(preloadedMatches?: Match[]): Promise<RefreshResponse> {
   const lastRefresh = await getConfig('lastRefreshTime');
   const now = Date.now();
 
   if (lastRefresh && now - parseInt(lastRefresh.value) < REFRESH_COOLDOWN_MS) {
-    return buildResponse('cache', parseInt(lastRefresh.value));
+    // Reuse the caller's scan on a cooldown hit too (e.g. a scheduled tick that
+    // lands within 20s of a manual refresh) so we don't scan needlessly.
+    return buildResponse('cache', parseInt(lastRefresh.value), preloadedMatches);
   }
 
   let source: RefreshSource = 'cache';
   let refreshedAt = lastRefresh ? parseInt(lastRefresh.value) : 0;
 
+  // Load the current match state once, then thread it (updated in memory)
+  // through every step below so we never re-scan the table.
+  let matches = preloadedMatches ?? ((await getAllMatches()) as unknown as Match[]);
+
   try {
     const freshMatches = await fetchMatches();
-    for (const match of freshMatches) {
-      if (match.matchId) {
-        await putMatch(match);
-      }
-    }
+    matches = await mergeAndWrite(matches, freshMatches, (m) => m.matchId);
     source = 'api';
     refreshedAt = now;
     await putConfig('lastRefreshTime', String(now));
@@ -32,13 +39,8 @@ export async function refreshData(): Promise<RefreshResponse> {
     console.warn('Football Data API refresh failed, falling back to BBC scraper:', apiError);
     try {
       const scraped = await fetchBbcFixtures();
-      const existing = (await getAllMatches()) as unknown as Match[];
-      const patches = buildBbcPatches(scraped, existing);
-      for (const patch of patches) {
-        const target = existing.find((m) => m.matchId === patch.matchId);
-        if (!target) continue;
-        await putMatch({ ...target, ...patch });
-      }
+      const patches = buildBbcPatches(scraped, matches);
+      matches = await mergeAndWrite(matches, patches, (p) => p.matchId, { onlyExisting: true });
       source = 'bbc';
       refreshedAt = now;
       await putConfig('lastRefreshTime', String(now));
@@ -53,24 +55,83 @@ export async function refreshData(): Promise<RefreshResponse> {
   // never blocks the refresh. Only patches existing rows (never creates them).
   try {
     const listings = await fetchTvListings();
-    const existing = (await getAllMatches()) as unknown as Match[];
-    const patches = buildChannelPatches(listings, existing);
+    const patches = buildChannelPatches(listings, matches);
+    const byId = indexById(matches);
+    const changed: Match[] = [];
     for (const patch of patches) {
-      const target = existing.find((m) => m.matchId === patch.matchId);
+      if (!patch.matchId) continue;
+      const target = byId.get(patch.matchId);
       if (!target) continue;
       if (sameChannels(target.channels, patch.channels)) continue;
-      await putMatch({ ...target, ...patch });
+      const merged = { ...target, ...patch };
+      byId.set(merged.matchId, merged);
+      changed.push(merged);
+    }
+    if (changed.length > 0) {
+      matches = Array.from(byId.values());
+      await batchPutMatches(changed as unknown as Record<string, unknown>[]);
     }
   } catch (tvError) {
     console.warn('Football-on-TV channel scrape failed:', tvError);
   }
 
-  // Recompute bracket and progress knockouts off the latest written state.
+  // Recompute bracket and progress knockouts off the latest in-memory state.
   await generateTreeIfReady();
-  const matches = (await getAllMatches()) as unknown as Match[];
   await processKnockoutResults(matches);
 
   return buildResponse(source, refreshedAt, matches);
+}
+
+/**
+ * Apply a set of updates (full fresh matches from the API, or partial patches
+ * from BBC) onto the in-memory match list, write only the rows that actually
+ * changed, and return the new list. Spreading existing-over-update preserves
+ * fields the source doesn't carry (e.g. scraped TV `channels`).
+ */
+async function mergeAndWrite<U extends { matchId?: string }>(
+  matches: Match[],
+  updates: U[],
+  getId: (u: U) => string | undefined,
+  opts: { onlyExisting?: boolean } = {},
+): Promise<Match[]> {
+  const byId = indexById(matches);
+  const changed: Match[] = [];
+
+  for (const update of updates) {
+    const id = getId(update);
+    if (!id) continue;
+    const existing = byId.get(id);
+    if (!existing && opts.onlyExisting) continue;
+    const merged = { ...(existing ?? {}), ...update, matchId: id } as Match;
+    if (matchChanged(existing, merged)) {
+      byId.set(id, merged);
+      changed.push(merged);
+    }
+  }
+
+  if (changed.length === 0) return matches;
+  await batchPutMatches(changed as unknown as Record<string, unknown>[]);
+  return Array.from(byId.values());
+}
+
+function indexById(matches: Match[]): Map<string, Match> {
+  return new Map(matches.map((m) => [m.matchId, m]));
+}
+
+/** True when any score/status/fixture field differs (or the row is brand new). */
+function matchChanged(existing: Match | undefined, next: Match): boolean {
+  if (!existing) return true;
+  return (
+    existing.homeTeam !== next.homeTeam ||
+    existing.awayTeam !== next.awayTeam ||
+    existing.homeScore !== next.homeScore ||
+    existing.awayScore !== next.awayScore ||
+    existing.status !== next.status ||
+    existing.stage !== next.stage ||
+    existing.group !== next.group ||
+    existing.datetime !== next.datetime ||
+    existing.venue !== next.venue
+  );
 }
 
 function sameChannels(

@@ -47,6 +47,7 @@ describe('refreshData', () => {
       expect(result.matches).toEqual(cachedMatches);
       expect(mockedFootballData.fetchMatches).not.toHaveBeenCalled();
       expect(mockedBbc.fetchBbcFixtures).not.toHaveBeenCalled();
+      expect(mockedDb.batchPutMatches).not.toHaveBeenCalled();
     });
 
     it('refetches once cooldown has elapsed (>20s)', async () => {
@@ -66,24 +67,63 @@ describe('refreshData', () => {
   });
 
   describe('happy path (API)', () => {
-    it('writes fresh matches and marks source=api', async () => {
+    it('writes new/changed matches in one batch and marks source=api', async () => {
       mockedDb.getConfig.mockResolvedValue(undefined);
       const freshMatches = [{ matchId: '1', homeTeam: 'ENG', awayTeam: 'BRA' }];
       mockedFootballData.fetchMatches.mockResolvedValue(freshMatches as never);
-      mockedDb.getAllMatches.mockResolvedValue(freshMatches);
+      mockedDb.getAllMatches.mockResolvedValue([]); // empty DB → match is new
       mockedDb.getAllTeams.mockResolvedValue([]);
 
       const result = await refreshData();
 
       expect(mockedFootballData.fetchMatches).toHaveBeenCalled();
-      expect(mockedDb.putMatch).toHaveBeenCalledWith(freshMatches[0]);
+      expect(mockedDb.batchPutMatches).toHaveBeenCalledWith([
+        { matchId: '1', homeTeam: 'ENG', awayTeam: 'BRA' },
+      ]);
       expect(mockedDb.putConfig).toHaveBeenCalledWith('lastRefreshTime', String(NOW));
       expect(result.source).toBe('api');
       expect(result.refreshedAt).toBe(new Date(NOW).toISOString());
       expect(result.matches).toEqual(freshMatches);
     });
 
-    it('skips matches without matchId', async () => {
+    it('does not write when the fresh data is identical to what is stored', async () => {
+      mockedDb.getConfig.mockResolvedValue(undefined);
+      const stored = {
+        matchId: '1',
+        homeTeam: 'ENG',
+        awayTeam: 'BRA',
+        homeScore: 1,
+        awayScore: 0,
+        status: 'FINISHED',
+        stage: 'GROUP_STAGE',
+        group: 'A',
+        datetime: '2026-06-14T18:00:00Z',
+        venue: 'Stadium',
+      };
+      mockedFootballData.fetchMatches.mockResolvedValue([stored] as never);
+      mockedDb.getAllMatches.mockResolvedValue([stored]);
+      mockedDb.getAllTeams.mockResolvedValue([]);
+
+      const result = await refreshData();
+
+      expect(result.source).toBe('api');
+      expect(mockedDb.batchPutMatches).not.toHaveBeenCalled();
+    });
+
+    it('uses preloaded matches instead of re-scanning the table', async () => {
+      mockedDb.getConfig.mockResolvedValue(undefined);
+      mockedFootballData.fetchMatches.mockResolvedValue([]);
+      mockedDb.getAllTeams.mockResolvedValue([]);
+      const preloaded = [{ matchId: 'pre', homeTeam: 'ENG', awayTeam: 'BRA' }];
+
+      const result = await refreshData(preloaded as never);
+
+      // The initial load was supplied; getAllMatches must not be called for it.
+      expect(mockedDb.getAllMatches).not.toHaveBeenCalled();
+      expect(result.matches).toEqual(preloaded);
+    });
+
+    it('skips updates without a matchId', async () => {
       mockedDb.getConfig.mockResolvedValue(undefined);
       const freshMatches = [
         { matchId: '1', homeTeam: 'ENG' },
@@ -95,13 +135,42 @@ describe('refreshData', () => {
 
       await refreshData();
 
-      expect(mockedDb.putMatch).toHaveBeenCalledTimes(1);
-      expect(mockedDb.putMatch).toHaveBeenCalledWith(freshMatches[0]);
+      expect(mockedDb.batchPutMatches).toHaveBeenCalledTimes(1);
+      expect(mockedDb.batchPutMatches).toHaveBeenCalledWith([{ matchId: '1', homeTeam: 'ENG' }]);
+    });
+
+    it('preserves existing channels when applying a score update', async () => {
+      mockedDb.getConfig.mockResolvedValue(undefined);
+      const ITV1 = { name: 'ITV1', bg: '#127b60', fg: '#fff' };
+      const stored = {
+        matchId: '1',
+        homeTeam: 'ENG',
+        awayTeam: 'BRA',
+        homeScore: null,
+        awayScore: null,
+        status: 'SCHEDULED',
+        stage: 'GROUP_STAGE',
+        group: 'A',
+        datetime: '2026-06-14T18:00:00Z',
+        venue: 'Stadium',
+        channels: [ITV1],
+      };
+      const fresh = { ...stored, homeScore: 1, awayScore: 0, status: 'LIVE', channels: undefined };
+      delete (fresh as { channels?: unknown }).channels; // API never carries channels
+      mockedFootballData.fetchMatches.mockResolvedValue([fresh] as never);
+      mockedDb.getAllMatches.mockResolvedValue([stored]);
+      mockedDb.getAllTeams.mockResolvedValue([]);
+
+      await refreshData();
+
+      expect(mockedDb.batchPutMatches).toHaveBeenCalledWith([
+        expect.objectContaining({ matchId: '1', homeScore: 1, status: 'LIVE', channels: [ITV1] }),
+      ]);
     });
   });
 
   describe('BBC fallback', () => {
-    it('falls back to BBC when API errors and applies score/status patches', async () => {
+    it('falls back to BBC when API errors and writes only changed rows', async () => {
       mockedDb.getConfig.mockResolvedValue(undefined);
       mockedFootballData.fetchMatches.mockRejectedValue(new Error('429 rate limited'));
 
@@ -139,13 +208,25 @@ describe('refreshData', () => {
       const result = await refreshData();
 
       expect(result.source).toBe('bbc');
-      expect(mockedDb.putMatch).toHaveBeenCalledWith({
-        ...existing[0],
-        homeScore: 2,
-        awayScore: 1,
-        status: 'FINISHED',
-      });
+      expect(mockedDb.batchPutMatches).toHaveBeenCalledWith([
+        { ...existing[0], homeScore: 2, awayScore: 1, status: 'FINISHED' },
+      ]);
       expect(mockedDb.putConfig).toHaveBeenCalledWith('lastRefreshTime', String(NOW));
+    });
+
+    it('ignores a BBC patch for a match that does not exist locally', async () => {
+      mockedDb.getConfig.mockResolvedValue(undefined);
+      mockedFootballData.fetchMatches.mockRejectedValue(new Error('429 rate limited'));
+      mockedDb.getAllMatches.mockResolvedValue([{ matchId: 'real', homeTeam: 'ENG', awayTeam: 'USA' }]);
+      mockedDb.getAllTeams.mockResolvedValue([]);
+      mockedBbc.fetchBbcFixtures.mockResolvedValue([]);
+      mockedBbc.buildBbcPatches.mockReturnValue([
+        { matchId: 'ghost', homeScore: 1, awayScore: 0, status: 'FINISHED' },
+      ]);
+
+      await refreshData();
+
+      expect(mockedDb.batchPutMatches).not.toHaveBeenCalled();
     });
 
     it('falls through to cache when both API and BBC fail', async () => {
@@ -162,6 +243,7 @@ describe('refreshData', () => {
       expect(result.source).toBe('cache');
       expect(result.matches).toEqual(cached);
       expect(mockedDb.putConfig).not.toHaveBeenCalled();
+      expect(mockedDb.batchPutMatches).not.toHaveBeenCalled();
     });
   });
 
@@ -199,10 +281,9 @@ describe('refreshData', () => {
 
       await refreshData();
 
-      expect(mockedDb.putMatch).toHaveBeenCalledWith({
-        ...existing[0],
-        channels: [ITV1, STV],
-      });
+      expect(mockedDb.batchPutMatches).toHaveBeenCalledWith([
+        { ...existing[0], channels: [ITV1, STV] },
+      ]);
     });
 
     it('skips a redundant write when channels are unchanged', async () => {
@@ -210,10 +291,7 @@ describe('refreshData', () => {
 
       await refreshData();
 
-      // existing[0] already has channels [ITV1] — no putMatch for the patch.
-      expect(mockedDb.putMatch).not.toHaveBeenCalledWith(
-        expect.objectContaining({ matchId: 'm1', channels: [ITV1] }),
-      );
+      expect(mockedDb.batchPutMatches).not.toHaveBeenCalled();
     });
 
     it('writes when the match has no channels yet', async () => {
@@ -223,7 +301,7 @@ describe('refreshData', () => {
 
       await refreshData();
 
-      expect(mockedDb.putMatch).toHaveBeenCalledWith({ ...unenriched[0], channels: [ITV1] });
+      expect(mockedDb.batchPutMatches).toHaveBeenCalledWith([{ ...unenriched[0], channels: [ITV1] }]);
     });
 
     it('treats an undefined patch channel list as equal to no channels (no write)', async () => {
@@ -233,7 +311,7 @@ describe('refreshData', () => {
 
       await refreshData();
 
-      expect(mockedDb.putMatch).not.toHaveBeenCalled();
+      expect(mockedDb.batchPutMatches).not.toHaveBeenCalled();
     });
 
     it('skips a patch whose matchId has no matching row', async () => {
@@ -243,7 +321,7 @@ describe('refreshData', () => {
 
       await refreshData();
 
-      expect(mockedDb.putMatch).not.toHaveBeenCalled();
+      expect(mockedDb.batchPutMatches).not.toHaveBeenCalled();
     });
 
     it('swallows a TV scrape failure without breaking the refresh', async () => {
