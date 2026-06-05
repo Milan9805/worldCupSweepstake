@@ -1,11 +1,15 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
+  BatchWriteCommand,
   DeleteCommand,
   GetCommand,
   PutCommand,
   ScanCommand,
 } from '@aws-sdk/lib-dynamodb';
+
+const BATCH_WRITE_MAX = 25; // DynamoDB BatchWriteItem hard limit per request
+const BATCH_WRITE_RETRIES = 3;
 
 let _docClient: DynamoDBDocumentClient | null = null;
 
@@ -85,6 +89,43 @@ export async function putMatch(match: Record<string, unknown>) {
       Item: match,
     })
   );
+}
+
+/**
+ * Write many match rows in as few requests as possible. Chunks into the 25-item
+ * BatchWriteItem limit, runs the chunks concurrently, and retries any items
+ * DynamoDB returns unprocessed. A no-op for an empty list, so callers can pass
+ * the (often small) set of changed matches without guarding first.
+ */
+export async function batchPutMatches(matches: Record<string, unknown>[]): Promise<void> {
+  const chunks: Record<string, unknown>[][] = [];
+  for (let i = 0; i < matches.length; i += BATCH_WRITE_MAX) {
+    chunks.push(matches.slice(i, i + BATCH_WRITE_MAX));
+  }
+  await Promise.all(chunks.map((chunk) => writeMatchChunk(chunk)));
+}
+
+async function writeMatchChunk(chunk: Record<string, unknown>[]): Promise<void> {
+  let requestItems = {
+    [tables.matches]: chunk.map((Item) => ({ PutRequest: { Item } })),
+  };
+
+  for (let attempt = 0; attempt < BATCH_WRITE_RETRIES; attempt++) {
+    const result = await getDocClient().send(
+      new BatchWriteCommand({ RequestItems: requestItems })
+    );
+    const unprocessed = result.UnprocessedItems;
+    if (!unprocessed || Object.keys(unprocessed).length === 0) return;
+    requestItems = unprocessed as typeof requestItems;
+  }
+
+  // Still unprocessed after all retries (sustained throttling). Don't fail the
+  // whole refresh — the next scheduled/poll cycle will pick these up — but log
+  // loudly so the dropped writes are visible in CloudWatch rather than silent.
+  const dropped = requestItems[tables.matches]?.length ?? 0;
+  if (dropped > 0) {
+    console.error(`batchPutMatches: ${dropped} match write(s) still unprocessed after ${BATCH_WRITE_RETRIES} attempts`);
+  }
 }
 
 export async function getTree() {
