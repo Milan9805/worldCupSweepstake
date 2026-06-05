@@ -5,3 +5,4 @@ export * from './teamNames';
 export * from './qualification';
 export * from './teamProgress';
 export * from './matchWindow';
+export * from './honours';

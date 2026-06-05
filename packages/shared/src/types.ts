@@ -67,6 +67,30 @@ export interface Match {
   channels?: ChannelBroadcast[]; // UK broadcast channels with brand colours
 }
 
+// ===== Feed Events =====
+export type FeedEventType =
+  | 'GOAL'
+  | 'KICKOFF'
+  | 'FULL_TIME'
+  | 'ELIMINATION'
+  | 'BRACKET_DRAWN';
+
+/**
+ * A single thing that happened in the tournament, persisted so the live feed
+ * (and, later, push) can replay it. Events are tournament-wide / group-agnostic:
+ * ownership is resolved per-viewer from the loaded group. `eventId` is
+ * deterministic per logical event (e.g. `${matchId}#FULL_TIME`) so a duplicate
+ * detection overwrites the same row rather than creating a second.
+ */
+export interface FeedEvent {
+  eventId: string;
+  ts: string; // ISO 8601 — when the event was detected
+  type: FeedEventType;
+  teamCode?: string;
+  matchId?: string;
+  payload: Record<string, unknown>; // display data (teams, scoreline, outcome, stage…)
+}
+
 // ===== Tournament Tree =====
 export interface TreeSlot {
   round: string; // "ROUND_OF_32", "ROUND_OF_16", "QUARTER_FINAL", "SEMI_FINAL", "FINAL"
