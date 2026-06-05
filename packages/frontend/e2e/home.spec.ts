@@ -15,11 +15,17 @@ test.describe('home page', () => {
     await expect(enter).toBeDisabled();
   });
 
-  test('enables submit once a group key is entered', async ({ page }) => {
+  test('enables submit once a group key and name are entered', async ({ page }) => {
     await page.goto('/');
 
+    const enter = page.getByRole('button', { name: /enter/i });
+
+    // The group key alone is not enough — a name is also required.
     await page.getByLabel(/group key/i).fill('test-passphrase');
-    await expect(page.getByRole('button', { name: /enter/i })).toBeEnabled();
+    await expect(enter).toBeDisabled();
+
+    await page.getByLabel(/your name/i).fill('Dan');
+    await expect(enter).toBeEnabled();
   });
 
   test('exposes an admin access link', async ({ page }) => {
