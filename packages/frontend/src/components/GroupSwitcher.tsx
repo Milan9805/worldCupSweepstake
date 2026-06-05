@@ -6,8 +6,9 @@ import { useIdentity } from '@/hooks/useIdentity';
 
 /**
  * Nav dropdown listing the device's known sweepstake groups. Picking one makes
- * it active (consumers keyed on the active group key refetch its data — no
- * re-login). A "Join another" entry routes to the landing login to add a new
+ * it active and reloads the page so every view (including the pages that only
+ * read the active group key on mount) lands on the newly-selected group — no
+ * re-login. A "Join another" entry routes to the landing login to add a new
  * group to the registry.
  */
 export default function GroupSwitcher() {
@@ -36,7 +37,11 @@ export default function GroupSwitcher() {
 
   const handleSwitch = (key: string) => {
     setOpen(false);
-    if (key !== activeGroupKey) switchGroup(key);
+    if (key === activeGroupKey) return;
+    // switchGroup persists the new active group to localStorage synchronously,
+    // so a full reload reliably re-renders every page against the new group.
+    switchGroup(key);
+    window.location.reload();
   };
 
   return (

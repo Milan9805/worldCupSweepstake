@@ -5,9 +5,18 @@ import GroupSwitcher from '../../components/GroupSwitcher';
 
 const mockSwitchGroup = jest.fn();
 const mockPush = jest.fn();
+const mockReload = jest.fn();
 
 let mockGroups: { groupKey: string; groupName: string; person: string | null }[] = [];
 let mockActiveGroupKey: string | null = null;
+
+// jsdom's location.reload is non-configurable, so replace window.location
+// wholesale with a plain stand-in whose reload we can spy on.
+const { href, origin, pathname } = window.location;
+Object.defineProperty(window, 'location', {
+  configurable: true,
+  value: { href, origin, pathname, assign: jest.fn(), replace: jest.fn(), reload: mockReload },
+});
 
 jest.mock('../../hooks/useIdentity', () => ({
   useIdentity: () => ({
@@ -58,6 +67,18 @@ describe('GroupSwitcher', () => {
     expect(mockSwitchGroup).toHaveBeenCalledWith('lads');
   });
 
+  it('reloads the page after switching, so every view lands on the new group', () => {
+    render(<GroupSwitcher />);
+    fireEvent.click(screen.getByRole('button', { expanded: false }));
+    fireEvent.click(screen.getByText('Lads on Tour'));
+    expect(mockReload).toHaveBeenCalledTimes(1);
+    // The active group must be persisted before the reload, or the reloaded
+    // page would come back up on the old group.
+    expect(mockSwitchGroup.mock.invocationCallOrder[0]).toBeLessThan(
+      mockReload.mock.invocationCallOrder[0]
+    );
+  });
+
   it('does not re-switch when selecting the already-active group', () => {
     render(<GroupSwitcher />);
     fireEvent.click(screen.getByRole('button', { expanded: false }));
@@ -65,6 +86,14 @@ describe('GroupSwitcher', () => {
     const activeItem = screen.getByRole('menuitem', { name: /Office Sweepstake/ });
     fireEvent.click(activeItem);
     expect(mockSwitchGroup).not.toHaveBeenCalled();
+  });
+
+  it('does not reload when selecting the already-active group', () => {
+    render(<GroupSwitcher />);
+    fireEvent.click(screen.getByRole('button', { expanded: false }));
+    const activeItem = screen.getByRole('menuitem', { name: /Office Sweepstake/ });
+    fireEvent.click(activeItem);
+    expect(mockReload).not.toHaveBeenCalled();
   });
 
   it('routes to the landing login from "Join another"', () => {
