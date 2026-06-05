@@ -15,6 +15,11 @@ import { handler as adminCreateGroupHandler } from './handlers/adminCreateGroup'
 import { handler as adminAssignHandler } from './handlers/adminAssign';
 import { handler as adminUploadAvatarHandler } from './handlers/adminUploadAvatar';
 
+// EventBridge-invoked scheduled refresh. Exported here so the Lambda deployment
+// package exposes it as `index.scheduledHandler` (a separate Lambda function
+// reuses the same zip with this handler — see infrastructure/modules/api).
+export { handler as scheduledHandler } from './handlers/scheduledRefresh';
+
 // Convert API Gateway v2 event to v1 format expected by handlers
 function toV1Event(event: APIGatewayProxyEventV2) {
   const method = event.requestContext.http.method;
