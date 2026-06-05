@@ -71,6 +71,7 @@ resource "aws_iam_role_policy" "lambda_dynamodb" {
         Action = [
           "dynamodb:GetItem",
           "dynamodb:PutItem",
+          "dynamodb:BatchWriteItem",
           "dynamodb:UpdateItem",
           "dynamodb:Scan",
           "dynamodb:Query"
@@ -148,21 +149,21 @@ resource "aws_apigatewayv2_stage" "default" {
 # Using a single Lambda with routing for simplicity
 
 resource "aws_lambda_function" "api" {
-  filename                       = "${path.module}/lambda.zip"
-  function_name                  = "sweepstake-${var.environment}-api"
-  role                           = aws_iam_role.lambda.arn
-  handler                        = "index.handler"
-  runtime                        = "nodejs20.x"
-  timeout                        = 30
-  memory_size                    = 256
-  source_code_hash               = filebase64sha256("${path.module}/lambda.zip")
+  filename         = "${path.module}/lambda.zip"
+  function_name    = "sweepstake-${var.environment}-api"
+  role             = aws_iam_role.lambda.arn
+  handler          = "index.handler"
+  runtime          = "nodejs20.x"
+  timeout          = 30
+  memory_size      = 256
+  source_code_hash = filebase64sha256("${path.module}/lambda.zip")
 
   environment {
     variables = {
-      TABLE_PREFIX                       = var.table_prefix
-      AVATAR_BUCKET                      = var.avatar_bucket_name
-      JWT_SECRET_SSM_NAME                = var.jwt_secret_ssm_name
-      FOOTBALL_DATA_API_KEY_SSM_NAME     = var.football_data_api_key_ssm_name
+      TABLE_PREFIX                   = var.table_prefix
+      AVATAR_BUCKET                  = var.avatar_bucket_name
+      JWT_SECRET_SSM_NAME            = var.jwt_secret_ssm_name
+      FOOTBALL_DATA_API_KEY_SSM_NAME = var.football_data_api_key_ssm_name
     }
   }
 
@@ -191,6 +192,57 @@ resource "aws_apigatewayv2_route" "catch_all" {
   api_id    = aws_apigatewayv2_api.api.id
   route_key = "$default"
   target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
+}
+
+# Scheduled background refresh
+# Reuses the same deployment package as the API Lambda but invokes the
+# scheduledHandler export. EventBridge fires it on a fixed cadence; the handler
+# itself no-ops (no external calls) unless a match is live or imminent, so this
+# stays within the football-data.org rate limit and the AWS free tier while
+# keeping scores fresh even when nobody has the site open.
+resource "aws_lambda_function" "scheduled_refresh" {
+  filename         = "${path.module}/lambda.zip"
+  function_name    = "sweepstake-${var.environment}-scheduled-refresh"
+  role             = aws_iam_role.lambda.arn
+  handler          = "index.scheduledHandler"
+  runtime          = "nodejs20.x"
+  timeout          = 60
+  memory_size      = 256
+  source_code_hash = filebase64sha256("${path.module}/lambda.zip")
+
+  environment {
+    variables = {
+      TABLE_PREFIX                   = var.table_prefix
+      AVATAR_BUCKET                  = var.avatar_bucket_name
+      JWT_SECRET_SSM_NAME            = var.jwt_secret_ssm_name
+      FOOTBALL_DATA_API_KEY_SSM_NAME = var.football_data_api_key_ssm_name
+    }
+  }
+
+  tags = {
+    Environment = var.environment
+    Project     = "sweepstake"
+  }
+}
+
+resource "aws_cloudwatch_event_rule" "scheduled_refresh" {
+  name                = "sweepstake-${var.environment}-scheduled-refresh"
+  description         = "Periodically trigger the background score refresh (no-ops when no match is active)"
+  schedule_expression = "rate(2 minutes)"
+}
+
+resource "aws_cloudwatch_event_target" "scheduled_refresh" {
+  rule      = aws_cloudwatch_event_rule.scheduled_refresh.name
+  target_id = "scheduled-refresh-lambda"
+  arn       = aws_lambda_function.scheduled_refresh.arn
+}
+
+resource "aws_lambda_permission" "allow_eventbridge" {
+  statement_id  = "AllowEventBridgeInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.scheduled_refresh.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.scheduled_refresh.arn
 }
 
 # CloudWatch Alarms
