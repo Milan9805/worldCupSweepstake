@@ -1,6 +1,6 @@
 import { generateBracketSlots, getNextSlot, isGroupStageComplete } from '@sweepstake/shared';
 import { Team, TreeSlot } from '@sweepstake/shared';
-import { getAllTeams, getTree, putTreeSlot, putTeam, getConfig, putConfig } from '../db/dynamodb';
+import { getAllTeams, getTree, putTreeSlot, putTeam, getConfig, putConfig, putEvent } from '../db/dynamodb';
 
 const TREE_GENERATED_KEY = 'treeGenerated';
 
@@ -42,6 +42,19 @@ export async function generateTreeIfReady(): Promise<boolean> {
 
   // Mark tree as generated
   await putConfig(TREE_GENERATED_KEY, 'true');
+
+  // Emit a single feed event for the bracket being drawn. This block runs only
+  // once — the early `treeGenerated === 'true'` guard above prevents re-entry —
+  // and the deterministic eventId means a re-detection would overwrite in place.
+  await putEvent({
+    eventId: 'BRACKET_DRAWN',
+    ts: new Date().toISOString(),
+    type: 'BRACKET_DRAWN',
+    payload: {
+      eliminated,
+      slots: slots.length,
+    },
+  });
 
   return true;
 }

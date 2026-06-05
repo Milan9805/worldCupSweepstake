@@ -114,6 +114,32 @@ resource "aws_dynamodb_table" "config" {
   }
 }
 
+resource "aws_dynamodb_table" "events" {
+  name         = "${var.table_prefix}Events"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "feedId"
+  range_key    = "sk"
+
+  attribute {
+    name = "feedId"
+    type = "S"
+  }
+
+  attribute {
+    name = "sk"
+    type = "S"
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+
+  tags = {
+    Environment = var.environment
+    Project     = "sweepstake"
+  }
+}
+
 output "table_arns" {
   value = [
     aws_dynamodb_table.groups.arn,
@@ -121,5 +147,6 @@ output "table_arns" {
     aws_dynamodb_table.teams.arn,
     aws_dynamodb_table.bracket.arn,
     aws_dynamodb_table.config.arn,
+    aws_dynamodb_table.events.arn,
   ]
 }

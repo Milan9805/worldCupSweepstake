@@ -5,8 +5,10 @@ import {
   DeleteCommand,
   GetCommand,
   PutCommand,
+  QueryCommand,
   ScanCommand,
 } from '@aws-sdk/lib-dynamodb';
+import { FeedEvent } from '@sweepstake/shared';
 
 const BATCH_WRITE_MAX = 25; // DynamoDB BatchWriteItem hard limit per request
 const BATCH_WRITE_RETRIES = 3;
@@ -38,7 +40,11 @@ export const tables = {
   teams: `${TABLE_PREFIX}Teams`,
   tree: `${TABLE_PREFIX}TournamentTree`,
   config: `${TABLE_PREFIX}Config`,
+  events: `${TABLE_PREFIX}Events`,
 };
+
+// All feed events live under one partition so the feed is a single Query.
+const FEED_PARTITION = 'FEED';
 
 export async function getGroup(groupKey: string) {
   const result = await getDocClient().send(
@@ -173,4 +179,48 @@ export async function putConfig(configKey: string, value: string) {
       Item: { configKey, value },
     })
   );
+}
+
+/**
+ * Persist a feed event. All events share the constant `feedId` partition and a
+ * sort key of `ts#matchId#type#teamCode`, so the table is a single chronological
+ * strip. The trailing `teamCode` differentiates events that share the same
+ * ts/matchId/type within one refresh cycle — most importantly the two GOAL
+ * events emitted when both sides score before the same poll (which otherwise
+ * collide and silently overwrite each other). Events without a team (e.g.
+ * KICKOFF, FULL_TIME, BRACKET_DRAWN) get an empty trailing segment, which is
+ * still unique because only one such event of a given type exists per match.
+ * The deterministic `eventId` is stored alongside (and used by callers as the
+ * idempotency key); a re-detected event maps to the same `sk` and overwrites in
+ * place rather than appending a duplicate.
+ */
+export async function putEvent(event: FeedEvent) {
+  await getDocClient().send(
+    new PutCommand({
+      TableName: tables.events,
+      Item: {
+        feedId: FEED_PARTITION,
+        sk: `${event.ts}#${event.matchId ?? ''}#${event.type}#${event.teamCode ?? ''}`,
+        ...event,
+      },
+    })
+  );
+}
+
+/**
+ * Return the most recent feed events, newest first. Single-partition Query
+ * (PK=FEED) with `ScanIndexForward=false` so we read off the end of the strip
+ * without a table scan.
+ */
+export async function getRecentEvents(limit: number): Promise<FeedEvent[]> {
+  const result = await getDocClient().send(
+    new QueryCommand({
+      TableName: tables.events,
+      KeyConditionExpression: 'feedId = :feedId',
+      ExpressionAttributeValues: { ':feedId': FEED_PARTITION },
+      ScanIndexForward: false,
+      Limit: limit,
+    })
+  );
+  return (result.Items || []) as FeedEvent[];
 }

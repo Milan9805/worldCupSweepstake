@@ -1,9 +1,10 @@
 import { fetchMatches } from '../clients/footballData';
 import { fetchBbcFixtures, buildBbcPatches } from '../clients/bbcScraper';
 import { fetchTvListings, buildChannelPatches } from '../clients/footballTvScraper';
-import { getAllMatches, getAllTeams, batchPutMatches, getConfig, putConfig } from '../db/dynamodb';
-import { Match, Team, RefreshSource, RefreshResponse, ChannelBroadcast } from '@sweepstake/shared';
+import { getAllMatches, getAllTeams, batchPutMatches, getConfig, putConfig, putEvent } from '../db/dynamodb';
+import { Match, Team, RefreshSource, RefreshResponse, ChannelBroadcast, FeedEvent } from '@sweepstake/shared';
 import { generateTreeIfReady, processKnockoutResults } from './generateTree';
+import { detectEvents } from './detectEvents';
 
 const REFRESH_COOLDOWN_MS = 20_000;
 
@@ -29,9 +30,13 @@ export async function refreshData(preloadedMatches?: Match[]): Promise<RefreshRe
   // through every step below so we never re-scan the table.
   let matches = preloadedMatches ?? ((await getAllMatches()) as unknown as Match[]);
 
+  // Current team state, indexed by code, so event detection can attach
+  // elimination info to a match that has just reached full time.
+  const teamsById = indexTeamsByCode((await getAllTeams()) as unknown as Team[]);
+
   try {
     const freshMatches = await fetchMatches();
-    matches = await mergeAndWrite(matches, freshMatches, (m) => m.matchId);
+    matches = await mergeAndWrite(matches, freshMatches, (m) => m.matchId, teamsById);
     source = 'api';
     refreshedAt = now;
     await putConfig('lastRefreshTime', String(now));
@@ -40,7 +45,7 @@ export async function refreshData(preloadedMatches?: Match[]): Promise<RefreshRe
     try {
       const scraped = await fetchBbcFixtures();
       const patches = buildBbcPatches(scraped, matches);
-      matches = await mergeAndWrite(matches, patches, (p) => p.matchId, { onlyExisting: true });
+      matches = await mergeAndWrite(matches, patches, (p) => p.matchId, teamsById, { onlyExisting: true });
       source = 'bbc';
       refreshedAt = now;
       await putConfig('lastRefreshTime', String(now));
@@ -92,10 +97,12 @@ async function mergeAndWrite<U extends { matchId?: string }>(
   matches: Match[],
   updates: U[],
   getId: (u: U) => string | undefined,
+  teamsById: Map<string, Team>,
   opts: { onlyExisting?: boolean } = {},
 ): Promise<Match[]> {
   const byId = indexById(matches);
   const changed: Match[] = [];
+  const events: FeedEvent[] = [];
 
   for (const update of updates) {
     const id = getId(update);
@@ -106,12 +113,23 @@ async function mergeAndWrite<U extends { matchId?: string }>(
     if (matchChanged(existing, merged)) {
       byId.set(id, merged);
       changed.push(merged);
+      // Collect the feed events implied by this transition; persisted only
+      // after the new match state is written (below) so re-runs don't refire.
+      events.push(...detectEvents(existing, merged, teamsById));
     }
   }
 
   if (changed.length === 0) return matches;
   await batchPutMatches(changed as unknown as Record<string, unknown>[]);
+  // Persist events AFTER the match state, so a failure mid-write can't leave an
+  // event whose triggering state was never stored. Deterministic eventIds mean
+  // a re-detected event overwrites its row rather than duplicating it.
+  await Promise.all(events.map((e) => putEvent(e)));
   return Array.from(byId.values());
+}
+
+function indexTeamsByCode(teams: Team[]): Map<string, Team> {
+  return new Map(teams.map((t) => [t.teamCode, t]));
 }
 
 function indexById(matches: Match[]): Map<string, Match> {

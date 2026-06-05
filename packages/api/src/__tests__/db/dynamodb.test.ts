@@ -10,8 +10,11 @@ import {
   putTreeSlot,
   getConfig,
   putConfig,
+  putEvent,
+  getRecentEvents,
   tables,
 } from '../../db/dynamodb';
+import { FeedEvent } from '@sweepstake/shared';
 
 // Mock the AWS SDK
 const mockSend = jest.fn();
@@ -25,6 +28,7 @@ jest.mock('@aws-sdk/lib-dynamodb', () => ({
   GetCommand: jest.fn().mockImplementation((input) => ({ input, type: 'Get' })),
   PutCommand: jest.fn().mockImplementation((input) => ({ input, type: 'Put' })),
   ScanCommand: jest.fn().mockImplementation((input) => ({ input, type: 'Scan' })),
+  QueryCommand: jest.fn().mockImplementation((input) => ({ input, type: 'Query' })),
   BatchWriteCommand: jest.fn().mockImplementation((input) => ({ input, type: 'BatchWrite' })),
 }));
 
@@ -40,6 +44,7 @@ describe('dynamodb module', () => {
       expect(tables.teams).toContain('Teams');
       expect(tables.tree).toContain('TournamentTree');
       expect(tables.config).toContain('Config');
+      expect(tables.events).toContain('Events');
     });
   });
 
@@ -227,6 +232,102 @@ describe('dynamodb module', () => {
       mockSend.mockResolvedValue({});
       await putConfig('testKey', 'testValue');
       expect(mockSend).toHaveBeenCalled();
+    });
+  });
+
+  describe('putEvent', () => {
+    it('stores the event under the FEED partition with a ts#matchId#type#teamCode sort key', async () => {
+      mockSend.mockResolvedValue({});
+      const event: FeedEvent = {
+        eventId: 'm1#FULL_TIME',
+        ts: '2026-06-14T20:00:00.000Z',
+        type: 'FULL_TIME',
+        matchId: 'm1',
+        payload: { outcome: 'home' },
+      };
+
+      await putEvent(event);
+
+      const command = mockSend.mock.calls[0][0];
+      expect(command.type).toBe('Put');
+      expect(command.input.TableName).toBe(tables.events);
+      expect(command.input.Item).toMatchObject({
+        feedId: 'FEED',
+        // No teamCode on this event, so the trailing segment is empty.
+        sk: '2026-06-14T20:00:00.000Z#m1#FULL_TIME#',
+        eventId: 'm1#FULL_TIME',
+        type: 'FULL_TIME',
+      });
+    });
+
+    it('includes teamCode in the sort key so simultaneous goals do not collide', async () => {
+      mockSend.mockResolvedValue({});
+      const homeGoal: FeedEvent = {
+        eventId: 'm1#GOAL#2-2',
+        ts: '2026-06-14T20:30:00.000Z',
+        type: 'GOAL',
+        teamCode: 'ENG',
+        matchId: 'm1',
+        payload: { side: 'home', homeScore: 2, awayScore: 2 },
+      };
+      const awayGoal: FeedEvent = {
+        eventId: 'm1#GOAL#2-2',
+        ts: '2026-06-14T20:30:00.000Z',
+        type: 'GOAL',
+        teamCode: 'BRA',
+        matchId: 'm1',
+        payload: { side: 'away', homeScore: 2, awayScore: 2 },
+      };
+
+      await putEvent(homeGoal);
+      await putEvent(awayGoal);
+
+      const homeSk = mockSend.mock.calls[0][0].input.Item.sk;
+      const awaySk = mockSend.mock.calls[1][0].input.Item.sk;
+      expect(homeSk).toBe('2026-06-14T20:30:00.000Z#m1#GOAL#ENG');
+      expect(awaySk).toBe('2026-06-14T20:30:00.000Z#m1#GOAL#BRA');
+      // Distinct sort keys mean the second PutItem cannot overwrite the first.
+      expect(homeSk).not.toBe(awaySk);
+    });
+
+    it('tolerates a matchId-less event (e.g. BRACKET_DRAWN) in the sort key', async () => {
+      mockSend.mockResolvedValue({});
+      const event: FeedEvent = {
+        eventId: 'BRACKET_DRAWN',
+        ts: '2026-06-20T12:00:00.000Z',
+        type: 'BRACKET_DRAWN',
+        payload: {},
+      };
+
+      await putEvent(event);
+
+      const command = mockSend.mock.calls[0][0];
+      expect(command.input.Item.sk).toBe('2026-06-20T12:00:00.000Z##BRACKET_DRAWN#');
+    });
+  });
+
+  describe('getRecentEvents', () => {
+    it('queries the FEED partition newest-first with the given limit', async () => {
+      const events = [{ eventId: 'm1#FULL_TIME', type: 'FULL_TIME' }];
+      mockSend.mockResolvedValue({ Items: events });
+
+      const result = await getRecentEvents(50);
+
+      const command = mockSend.mock.calls[0][0];
+      expect(command.type).toBe('Query');
+      expect(command.input.TableName).toBe(tables.events);
+      expect(command.input.KeyConditionExpression).toBe('feedId = :feedId');
+      expect(command.input.ExpressionAttributeValues).toEqual({ ':feedId': 'FEED' });
+      expect(command.input.ScanIndexForward).toBe(false);
+      expect(command.input.Limit).toBe(50);
+      expect(result).toEqual(events);
+    });
+
+    it('returns an empty array when there are no events', async () => {
+      mockSend.mockResolvedValue({ Items: undefined });
+
+      const result = await getRecentEvents(10);
+      expect(result).toEqual([]);
     });
   });
 });

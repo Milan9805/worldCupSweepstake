@@ -59,6 +59,17 @@ const TABLES = [
     KeySchema: [{ AttributeName: 'configKey', KeyType: 'HASH' as const }],
     AttributeDefinitions: [{ AttributeName: 'configKey', AttributeType: 'S' as const }],
   },
+  {
+    TableName: `${TABLE_PREFIX}Events`,
+    KeySchema: [
+      { AttributeName: 'feedId', KeyType: 'HASH' as const },
+      { AttributeName: 'sk', KeyType: 'RANGE' as const },
+    ],
+    AttributeDefinitions: [
+      { AttributeName: 'feedId', AttributeType: 'S' as const },
+      { AttributeName: 'sk', AttributeType: 'S' as const },
+    ],
+  },
 ];
 
 async function createTables() {
