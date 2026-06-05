@@ -7,6 +7,7 @@ jest.mock('../handlers/getMatches', () => ({ handler: jest.fn() }));
 jest.mock('../handlers/getTeams', () => ({ handler: jest.fn() }));
 jest.mock('../handlers/getTree', () => ({ handler: jest.fn() }));
 jest.mock('../handlers/getBracket', () => ({ handler: jest.fn() }));
+jest.mock('../handlers/getFeed', () => ({ handler: jest.fn() }));
 jest.mock('../handlers/refresh', () => ({ handler: jest.fn() }));
 jest.mock('../handlers/adminLogin', () => ({ handler: jest.fn() }));
 jest.mock('../handlers/adminMembers', () => ({ handler: jest.fn() }));
@@ -19,6 +20,7 @@ import { handler as getMatchesHandler } from '../handlers/getMatches';
 import { handler as getTeamsHandler } from '../handlers/getTeams';
 import { handler as getTreeHandler } from '../handlers/getTree';
 import { handler as getBracketHandler } from '../handlers/getBracket';
+import { handler as getFeedHandler } from '../handlers/getFeed';
 import { handler as refreshHandler } from '../handlers/refresh';
 import { handler as adminLoginHandler } from '../handlers/adminLogin';
 import { handler as adminMembersHandler } from '../handlers/adminMembers';
@@ -52,8 +54,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   for (const h of [
     getGroupHandler, getMatchesHandler, getTeamsHandler, getTreeHandler,
-    getBracketHandler, refreshHandler, adminLoginHandler, adminMembersHandler,
-    adminAssignHandler, adminUploadAvatarHandler,
+    getBracketHandler, getFeedHandler, refreshHandler, adminLoginHandler,
+    adminMembersHandler, adminAssignHandler, adminUploadAvatarHandler,
   ]) {
     (h as MockedHandler).mockResolvedValue(OK_RESPONSE);
   }
@@ -83,6 +85,7 @@ describe('Lambda dispatcher', () => {
       ['GET', '/api/teams', getTeamsHandler as MockedHandler],
       ['GET', '/api/tree', getTreeHandler as MockedHandler],
       ['GET', '/api/bracket', getBracketHandler as MockedHandler],
+      ['GET', '/api/feed', getFeedHandler as MockedHandler],
       ['POST', '/api/refresh', refreshHandler as MockedHandler],
       ['POST', '/api/admin/login', adminLoginHandler as MockedHandler],
       ['POST', '/api/admin/members', adminMembersHandler as MockedHandler],
