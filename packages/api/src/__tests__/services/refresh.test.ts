@@ -25,6 +25,10 @@ describe('refreshData', () => {
     // Default: channel enrichment is a no-op unless a test opts in.
     mockedTv.fetchTvListings.mockResolvedValue([]);
     mockedTv.buildChannelPatches.mockReturnValue([]);
+    // Default: the live BBC overlay is a no-op unless a test opts in. (It only
+    // runs at all when a match is in its active window.)
+    mockedBbc.fetchBbcFixtures.mockResolvedValue([]);
+    mockedBbc.buildBbcPatches.mockReturnValue([]);
   });
 
   afterEach(() => {
@@ -166,6 +170,100 @@ describe('refreshData', () => {
       expect(mockedDb.batchPutMatches).toHaveBeenCalledWith([
         expect.objectContaining({ matchId: '1', homeScore: 1, status: 'LIVE', channels: [ITV1] }),
       ]);
+    });
+  });
+
+  describe('live BBC overlay (API succeeds but carries no live data)', () => {
+    // A match kicking off ~now, so it sits inside the active window. The API
+    // returns it still SCHEDULED with null scores (the free-tier behaviour);
+    // BBC supplies the live score + status.
+    const liveMatch = {
+      matchId: 'm-mex-rsa',
+      homeTeam: 'MEX',
+      awayTeam: 'RSA',
+      homeScore: null,
+      awayScore: null,
+      status: 'SCHEDULED',
+      stage: 'GROUP_STAGE',
+      group: 'A',
+      datetime: new Date(NOW).toISOString(),
+      venue: 'Estadio Azteca',
+    };
+
+    it('overlays BBC live score/status when a match is in its active window', async () => {
+      mockedDb.getConfig.mockResolvedValue(undefined);
+      mockedFootballData.fetchMatches.mockResolvedValue([liveMatch] as never);
+      mockedDb.getAllMatches.mockResolvedValue([liveMatch]);
+      mockedDb.getAllTeams.mockResolvedValue([]);
+      mockedBbc.fetchBbcFixtures.mockResolvedValue([
+        {
+          homeTeam: 'MEX',
+          awayTeam: 'RSA',
+          homeScore: 1,
+          awayScore: 0,
+          status: 'LIVE',
+          datetime: liveMatch.datetime,
+        },
+      ]);
+      mockedBbc.buildBbcPatches.mockReturnValue([
+        { matchId: 'm-mex-rsa', homeScore: 1, awayScore: 0, status: 'LIVE' },
+      ]);
+
+      const result = await refreshData();
+
+      expect(mockedBbc.fetchBbcFixtures).toHaveBeenCalled();
+      expect(mockedDb.batchPutMatches).toHaveBeenCalledWith([
+        expect.objectContaining({ matchId: 'm-mex-rsa', homeScore: 1, awayScore: 0, status: 'LIVE' }),
+      ]);
+      // KICKOFF (SCHEDULED→LIVE) and the goal are persisted as feed events.
+      expect(mockedDb.putEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'KICKOFF' }));
+      expect(mockedDb.putEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'GOAL' }));
+      expect(result.source).toBe('bbc');
+    });
+
+    it('does not consult BBC when no match is in an active window', async () => {
+      mockedDb.getConfig.mockResolvedValue(undefined);
+      // Far-future fixture → outside the window.
+      const future = { ...liveMatch, datetime: '2027-01-01T00:00:00Z' };
+      mockedFootballData.fetchMatches.mockResolvedValue([future] as never);
+      mockedDb.getAllMatches.mockResolvedValue([future]);
+      mockedDb.getAllTeams.mockResolvedValue([]);
+
+      await refreshData();
+
+      expect(mockedBbc.fetchBbcFixtures).not.toHaveBeenCalled();
+    });
+
+    it('keeps the good API sync when the live BBC overlay throws', async () => {
+      mockedDb.getConfig.mockResolvedValue(undefined);
+      mockedFootballData.fetchMatches.mockResolvedValue([liveMatch] as never);
+      mockedDb.getAllMatches.mockResolvedValue([liveMatch]);
+      mockedDb.getAllTeams.mockResolvedValue([]);
+      mockedBbc.fetchBbcFixtures.mockRejectedValue(new Error('BBC down'));
+
+      const result = await refreshData();
+
+      expect(result.source).toBe('api');
+      expect(mockedDb.putConfig).toHaveBeenCalledWith('lastRefreshTime', String(NOW));
+      expect(console.warn).toHaveBeenCalledWith(
+        'BBC live overlay failed (keeping API data):',
+        expect.any(Error),
+      );
+    });
+
+    it('does not let a stale SCHEDULED/null API poll regress a live match', async () => {
+      mockedDb.getConfig.mockResolvedValue(undefined);
+      // Already live in the DB (BBC set it last cycle)...
+      const stored = { ...liveMatch, homeScore: 1, awayScore: 0, status: 'LIVE' };
+      // ...but the free-tier API still reports it as pre-match.
+      mockedFootballData.fetchMatches.mockResolvedValue([liveMatch] as never);
+      mockedDb.getAllMatches.mockResolvedValue([stored]);
+      mockedDb.getAllTeams.mockResolvedValue([]);
+
+      await refreshData();
+
+      // The stale poll must not write SCHEDULED/null over the live row.
+      expect(mockedDb.batchPutMatches).not.toHaveBeenCalled();
     });
   });
 

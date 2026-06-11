@@ -202,15 +202,25 @@ function mapStatus(event: BbcEvent): MatchStatus {
   const raw = (event.status ?? '').toLowerCase();
   const comment = (event.statusComment?.value ?? '').toLowerCase();
 
-  // Observed pre-tournament: BBC uses "PreEvent". The other values are
-  // best-effort guesses we'll harden once live data is available.
-  if (raw === 'preevent' || comment === 'scheduled') return 'SCHEDULED';
-  if (raw === 'postevent' || /(full[- ]?time|finished|finalresult|ft\b)/.test(comment)) {
+  // BBC's status lifecycle (confirmed against live data 2026-06-11): a match
+  // moves PreEvent → MidEvent (in play, *including* half-time) → PostEvent.
+  // The running clock lives in statusComment: "19'", "45+2'", "HT" at the
+  // break, "FT" at the end. We key off `status` first and fall back to the
+  // comment so an unfamiliar status value still resolves correctly.
+  //
+  // Order matters: test FINISHED before LIVE so "FT" wins over a stray digit.
+  if (raw === 'postevent' || /full[- ]?time|finished|final|\bft\b/.test(comment)) {
     return 'FINISHED';
   }
-  if (raw === 'inprogress' || raw === 'live' || /(live|half[- ]?time|in[- ]?play|min)/.test(comment)) {
+  if (
+    raw === 'midevent' ||
+    raw === 'inprogress' ||
+    raw === 'live' ||
+    /\bht\b|half[- ]?time|in[- ]?play|\blive\b|\d+\s*'/.test(comment)
+  ) {
     return 'LIVE';
   }
+  if (raw === 'preevent' || comment === 'scheduled') return 'SCHEDULED';
   return 'SCHEDULED';
 }
 

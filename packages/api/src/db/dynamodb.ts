@@ -190,9 +190,13 @@ export async function putConfig(configKey: string, value: string) {
  * collide and silently overwrite each other). Events without a team (e.g.
  * KICKOFF, FULL_TIME, BRACKET_DRAWN) get an empty trailing segment, which is
  * still unique because only one such event of a given type exists per match.
- * The deterministic `eventId` is stored alongside (and used by callers as the
- * idempotency key); a re-detected event maps to the same `sk` and overwrites in
- * place rather than appending a duplicate.
+ *
+ * NOTE: the `sk` embeds `ts` (detection time), so re-detecting the same logical
+ * event at a later poll APPENDS a new row rather than overwriting. The
+ * deterministic `eventId` is the real idempotency key and is collapsed at read
+ * time by `getRecentEvents` (newest wins). `detectEvents` only re-fires when a
+ * match's stored score/status actually changes, so in practice this churn is
+ * rare; the read-side dedupe keeps the feed correct regardless.
  */
 export async function putEvent(event: FeedEvent) {
   await getDocClient().send(
@@ -211,6 +215,13 @@ export async function putEvent(event: FeedEvent) {
  * Return the most recent feed events, newest first. Single-partition Query
  * (PK=FEED) with `ScanIndexForward=false` so we read off the end of the strip
  * without a table scan.
+ *
+ * Collapses any rows that share a deterministic `eventId`, keeping the newest.
+ * The sort key embeds `ts` (set to detection time), so a logical event
+ * re-detected at a later poll lands in a *new* row rather than overwriting —
+ * the `eventId` is the true idempotency key, so we dedupe on it here at read
+ * time. We over-fetch (the table is only a few hundred rows all tournament) so
+ * that collapsing duplicates can't starve the caller of `limit` real events.
  */
 export async function getRecentEvents(limit: number): Promise<FeedEvent[]> {
   const result = await getDocClient().send(
@@ -219,8 +230,25 @@ export async function getRecentEvents(limit: number): Promise<FeedEvent[]> {
       KeyConditionExpression: 'feedId = :feedId',
       ExpressionAttributeValues: { ':feedId': FEED_PARTITION },
       ScanIndexForward: false,
-      Limit: limit,
+      Limit: Math.min(limit * 3, 600),
     })
   );
-  return (result.Items || []) as FeedEvent[];
+  return dedupeByEventId((result.Items || []) as FeedEvent[]).slice(0, limit);
+}
+
+/**
+ * Keep the first occurrence of each `eventId` from an already newest-first list
+ * (i.e. the most recent). Events with no `eventId` are passed through untouched.
+ */
+export function dedupeByEventId(events: FeedEvent[]): FeedEvent[] {
+  const seen = new Set<string>();
+  const out: FeedEvent[] = [];
+  for (const event of events) {
+    if (event.eventId) {
+      if (seen.has(event.eventId)) continue;
+      seen.add(event.eventId);
+    }
+    out.push(event);
+  }
+  return out;
 }

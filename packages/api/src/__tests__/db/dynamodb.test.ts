@@ -12,6 +12,7 @@ import {
   putConfig,
   putEvent,
   getRecentEvents,
+  dedupeByEventId,
   tables,
 } from '../../db/dynamodb';
 import { FeedEvent } from '@sweepstake/shared';
@@ -307,7 +308,7 @@ describe('dynamodb module', () => {
   });
 
   describe('getRecentEvents', () => {
-    it('queries the FEED partition newest-first with the given limit', async () => {
+    it('queries the FEED partition newest-first, over-fetching to absorb dupes', async () => {
       const events = [{ eventId: 'm1#FULL_TIME', type: 'FULL_TIME' }];
       mockSend.mockResolvedValue({ Items: events });
 
@@ -319,8 +320,29 @@ describe('dynamodb module', () => {
       expect(command.input.KeyConditionExpression).toBe('feedId = :feedId');
       expect(command.input.ExpressionAttributeValues).toEqual({ ':feedId': 'FEED' });
       expect(command.input.ScanIndexForward).toBe(false);
-      expect(command.input.Limit).toBe(50);
+      // Over-fetches (limit * 3, capped at 600) so deduping can't starve the
+      // caller of `limit` real events.
+      expect(command.input.Limit).toBe(150);
       expect(result).toEqual(events);
+    });
+
+    it('collapses rows sharing an eventId, keeping the newest, and honours limit', async () => {
+      // Newest-first, with the KICKOFF and GOAL each re-detected at a later ts.
+      mockSend.mockResolvedValue({
+        Items: [
+          { eventId: 'm1#KICKOFF', type: 'KICKOFF', ts: '2026-06-11T19:34:16Z' },
+          { eventId: 'm1#GOAL#1-0', type: 'GOAL', ts: '2026-06-11T19:34:16Z' },
+          { eventId: 'm1#KICKOFF', type: 'KICKOFF', ts: '2026-06-11T19:28:14Z' },
+          { eventId: 'm1#GOAL#1-0', type: 'GOAL', ts: '2026-06-11T19:28:14Z' },
+        ],
+      });
+
+      const result = await getRecentEvents(1);
+
+      // Deduped to two unique events (newest ts kept), then sliced to limit=1.
+      expect(result).toEqual([
+        { eventId: 'm1#KICKOFF', type: 'KICKOFF', ts: '2026-06-11T19:34:16Z' },
+      ]);
     });
 
     it('returns an empty array when there are no events', async () => {
@@ -328,6 +350,22 @@ describe('dynamodb module', () => {
 
       const result = await getRecentEvents(10);
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('dedupeByEventId', () => {
+    it('keeps the first occurrence of each eventId and passes through id-less rows', () => {
+      const events = [
+        { eventId: 'a', ts: '3' },
+        { eventId: 'b', ts: '2' },
+        { eventId: 'a', ts: '1' },
+        { ts: '0' },
+      ] as unknown as FeedEvent[];
+      expect(dedupeByEventId(events)).toEqual([
+        { eventId: 'a', ts: '3' },
+        { eventId: 'b', ts: '2' },
+        { ts: '0' },
+      ]);
     });
   });
 });

@@ -85,6 +85,44 @@ describe('parseBbcHtml (status mapping for not-yet-observed states)', () => {
     expect(f.status).toBe('FINISHED');
   });
 
+  it('maps MidEvent (with a running clock) → LIVE', () => {
+    // Confirmed against live World Cup data: BBC uses status "MidEvent" and a
+    // minute clock in statusComment ("19'") while a match is in play.
+    const html = makeHtmlWith({
+      home: { fullName: 'Mexico', score: 1 },
+      away: { fullName: 'South Africa', score: 0 },
+      startDateTime: '2026-06-11T19:00:00Z',
+      status: 'MidEvent',
+      statusComment: { value: "19'" },
+    });
+    const [f] = parseBbcHtml(html);
+    expect(f.homeScore).toBe(1);
+    expect(f.awayScore).toBe(0);
+    expect(f.status).toBe('LIVE');
+  });
+
+  it('maps half-time (MidEvent / "HT") → LIVE, not FINISHED', () => {
+    const html = makeHtmlWith({
+      home: { fullName: 'Mexico', score: 1 },
+      away: { fullName: 'South Africa', score: 0 },
+      startDateTime: '2026-06-11T19:00:00Z',
+      status: 'MidEvent',
+      statusComment: { value: 'HT' },
+    });
+    expect(parseBbcHtml(html)[0].status).toBe('LIVE');
+  });
+
+  it('maps PostEvent / "FT" → FINISHED (not LIVE despite the digit-free clock)', () => {
+    const html = makeHtmlWith({
+      home: { fullName: 'Mexico', score: 2 },
+      away: { fullName: 'South Africa', score: 1 },
+      startDateTime: '2026-06-11T19:00:00Z',
+      status: 'PostEvent',
+      statusComment: { value: 'FT' },
+    });
+    expect(parseBbcHtml(html)[0].status).toBe('FINISHED');
+  });
+
   it('maps InProgress → LIVE', () => {
     const html = makeHtmlWith({
       home: { fullName: 'Germany', score: 0 },

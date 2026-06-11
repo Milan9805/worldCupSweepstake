@@ -2,7 +2,16 @@ import { fetchMatches } from '../clients/footballData';
 import { fetchBbcFixtures, buildBbcPatches } from '../clients/bbcScraper';
 import { fetchTvListings, buildChannelPatches } from '../clients/footballTvScraper';
 import { getAllMatches, getAllTeams, batchPutMatches, getConfig, putConfig, putEvent } from '../db/dynamodb';
-import { Match, Team, RefreshSource, RefreshResponse, ChannelBroadcast, FeedEvent } from '@sweepstake/shared';
+import {
+  Match,
+  MatchStatus,
+  Team,
+  RefreshSource,
+  RefreshResponse,
+  ChannelBroadcast,
+  FeedEvent,
+  hasActiveMatchWindow,
+} from '@sweepstake/shared';
 import { generateTreeIfReady, processKnockoutResults } from './generateTree';
 import { detectEvents } from './detectEvents';
 
@@ -40,6 +49,27 @@ export async function refreshData(preloadedMatches?: Match[]): Promise<RefreshRe
     source = 'api';
     refreshedAt = now;
     await putConfig('lastRefreshTime', String(now));
+
+    // football-data.org's free tier serves pre-match and post-match data but
+    // never flips a fixture to live or carries an in-running score — during a
+    // match it keeps returning the SCHEDULED/null row. So whenever a match is
+    // in its active window, overlay BBC's live scores/status on top of the API
+    // result (patching existing rows only). This is the path that actually
+    // produces live scores and the KICKOFF/GOAL/FULL_TIME feed events; the
+    // catch below remains the API-is-down fallback. Best-effort: a BBC failure
+    // here is logged and must not undo the good API sync.
+    if (hasActiveMatchWindow(matches, now)) {
+      try {
+        const scraped = await fetchBbcFixtures();
+        const livePatches = buildBbcPatches(scraped, matches);
+        matches = await mergeAndWrite(matches, livePatches, (p) => p.matchId, teamsById, {
+          onlyExisting: true,
+        });
+        if (livePatches.length > 0) source = 'bbc';
+      } catch (liveError) {
+        console.warn('BBC live overlay failed (keeping API data):', liveError);
+      }
+    }
   } catch (apiError) {
     console.warn('Football Data API refresh failed, falling back to BBC scraper:', apiError);
     try {
@@ -109,7 +139,7 @@ async function mergeAndWrite<U extends { matchId?: string }>(
     if (!id) continue;
     const existing = byId.get(id);
     if (!existing && opts.onlyExisting) continue;
-    const merged = { ...(existing ?? {}), ...update, matchId: id } as Match;
+    const merged = applyUpdate(existing, update, id);
     if (matchChanged(existing, merged)) {
       byId.set(id, merged);
       changed.push(merged);
@@ -126,6 +156,33 @@ async function mergeAndWrite<U extends { matchId?: string }>(
   // a re-detected event overwrites its row rather than duplicating it.
   await Promise.all(events.map((e) => putEvent(e)));
   return Array.from(byId.values());
+}
+
+const STATUS_RANK: Record<MatchStatus, number> = { SCHEDULED: 0, LIVE: 1, FINISHED: 2 };
+
+/**
+ * Merge a single update onto the existing row, guarding against a *stale*
+ * source regressing live state. football-data.org's free tier keeps returning
+ * pre-match data (SCHEDULED, null scores) even after a match has kicked off, so
+ * a naive spread would wipe the live score/status that BBC just supplied — and
+ * then re-detect a phantom kickoff on the next poll. We therefore never let a
+ * known score fall back to "no data", nor a status move backwards (a match
+ * can't un-kickoff or un-finish). A genuine downward score correction (VAR) is
+ * still allowed: that's number → smaller number, not number → null.
+ */
+function applyUpdate<U extends { matchId?: string }>(
+  existing: Match | undefined,
+  update: U,
+  id: string,
+): Match {
+  const merged = { ...(existing ?? {}), ...update, matchId: id } as Match;
+  if (!existing) return merged;
+
+  if (merged.homeScore == null && existing.homeScore != null) merged.homeScore = existing.homeScore;
+  if (merged.awayScore == null && existing.awayScore != null) merged.awayScore = existing.awayScore;
+  if (STATUS_RANK[merged.status] < STATUS_RANK[existing.status]) merged.status = existing.status;
+
+  return merged;
 }
 
 function indexTeamsByCode(teams: Team[]): Map<string, Team> {
