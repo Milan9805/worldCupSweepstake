@@ -84,6 +84,27 @@ export function detectEvents(
     });
   }
 
+  // ===== HALF_TIME — clock entered the interval =====
+  // BBC keeps a match's status at LIVE through the break and flips its clock
+  // label to "HT" (carried on `minute`), so half-time is a minute transition,
+  // not a status one. Fire once on the way in; the deterministic eventId plus
+  // the read-time dedupe collapse the repeated polls across the ~15-min break.
+  if (merged.status === 'LIVE' && isHalfTime(merged.minute) && !isHalfTime(existing?.minute)) {
+    events.push({
+      eventId: `${matchId}#HALF_TIME`,
+      ts,
+      type: 'HALF_TIME',
+      matchId,
+      payload: {
+        homeTeam: merged.homeTeam,
+        awayTeam: merged.awayTeam,
+        homeScore: nextHome,
+        awayScore: nextAway,
+        stage: merged.stage,
+      },
+    });
+  }
+
   // ===== FULL_TIME — status transitioned -> FINISHED =====
   const becameFinished =
     existing?.status !== 'FINISHED' && merged.status === 'FINISHED';
@@ -133,4 +154,12 @@ export function detectEvents(
   }
 
   return events;
+}
+
+/**
+ * Whether a clock label denotes the half-time interval. BBC writes "HT"; we
+ * stay tolerant of "Half Time" / "Half-time" in case the upstream label drifts.
+ */
+function isHalfTime(minute: string | null | undefined): boolean {
+  return /^ht$|half[\s-]?time/i.test((minute ?? '').trim());
 }

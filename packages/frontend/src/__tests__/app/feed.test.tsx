@@ -155,6 +155,23 @@ describe('FeedPage', () => {
     );
   });
 
+  it('renders a half-time event with its label and scoreline', async () => {
+    mockGetFeed.mockResolvedValue([
+      {
+        eventId: 'm3#HALF_TIME',
+        ts: new Date().toISOString(),
+        type: 'HALF_TIME',
+        matchId: 'm3',
+        payload: { homeTeam: 'GER', awayTeam: 'BRA', homeScore: 1, awayScore: 0, stage: 'GROUP_STAGE' },
+      },
+    ]);
+
+    render(<FeedPage />);
+
+    expect(await screen.findByText('Half time')).toBeInTheDocument();
+    expect(screen.getByText('1–0')).toBeInTheDocument();
+  });
+
   it('renders an elimination event', async () => {
     mockGetFeed.mockResolvedValue([
       {

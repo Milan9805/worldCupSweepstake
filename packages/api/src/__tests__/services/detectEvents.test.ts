@@ -126,6 +126,44 @@ describe('detectEvents', () => {
     });
   });
 
+  describe('HALF_TIME', () => {
+    it('emits HALF_TIME when the clock enters the interval', () => {
+      const existing = makeMatch({ status: 'LIVE', homeScore: 1, awayScore: 0, minute: "45'+1" });
+      const merged = makeMatch({ status: 'LIVE', homeScore: 1, awayScore: 0, minute: 'HT' });
+
+      const events = detectEvents(existing, merged, NO_TEAMS);
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        eventId: 'm1#HALF_TIME',
+        type: 'HALF_TIME',
+        matchId: 'm1',
+        payload: { homeTeam: 'ENG', awayTeam: 'BRA', homeScore: 1, awayScore: 0 },
+      });
+    });
+
+    it('does not re-emit HALF_TIME while still at the interval', () => {
+      const existing = makeMatch({ status: 'LIVE', homeScore: 1, awayScore: 0, minute: 'HT' });
+      const merged = makeMatch({ status: 'LIVE', homeScore: 1, awayScore: 0, minute: 'HT' });
+
+      expect(detectEvents(existing, merged, NO_TEAMS)).toEqual([]);
+    });
+
+    it('does not emit HALF_TIME when the second half kicks off', () => {
+      const existing = makeMatch({ status: 'LIVE', homeScore: 1, awayScore: 0, minute: 'HT' });
+      const merged = makeMatch({ status: 'LIVE', homeScore: 1, awayScore: 0, minute: "46'" });
+
+      expect(detectEvents(existing, merged, NO_TEAMS).some((e) => e.type === 'HALF_TIME')).toBe(false);
+    });
+
+    it('tolerates a "Half Time" label variant', () => {
+      const existing = makeMatch({ status: 'LIVE', homeScore: 0, awayScore: 0, minute: "44'" });
+      const merged = makeMatch({ status: 'LIVE', homeScore: 0, awayScore: 0, minute: 'Half Time' });
+
+      expect(detectEvents(existing, merged, NO_TEAMS).some((e) => e.type === 'HALF_TIME')).toBe(true);
+    });
+  });
+
   describe('FULL_TIME', () => {
     it('emits FULL_TIME with a home-win outcome', () => {
       const existing = makeMatch({ homeScore: 2, awayScore: 1, status: 'LIVE' });

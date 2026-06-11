@@ -75,6 +75,7 @@ export interface Match {
 export type FeedEventType =
   | 'GOAL'
   | 'KICKOFF'
+  | 'HALF_TIME'
   | 'FULL_TIME'
   | 'ELIMINATION'
   | 'BRACKET_DRAWN';

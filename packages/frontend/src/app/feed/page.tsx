@@ -12,6 +12,7 @@ import { FeedEvent, FeedEventType, Person, Team } from '@sweepstake/shared';
 const EVENT_META: Record<FeedEventType, { icon: string; label: string }> = {
   GOAL: { icon: '⚽', label: 'Goal' },
   KICKOFF: { icon: '🟢', label: 'Kick-off' },
+  HALF_TIME: { icon: '⏸️', label: 'Half time' },
   FULL_TIME: { icon: '🏁', label: 'Full time' },
   ELIMINATION: { icon: '💀', label: 'Eliminated' },
   BRACKET_DRAWN: { icon: '🗂️', label: 'Bracket drawn' },
@@ -134,7 +135,7 @@ function FeedRow({ event, teamsByCode, ownersByTeam, claimedPerson, now }: FeedR
   const meta = EVENT_META[event.type];
 
   // Team codes this event involves: a single team (GOAL/ELIMINATION) or both
-  // sides of a match (KICKOFF/FULL_TIME). BRACKET_DRAWN involves no team.
+  // sides of a match (KICKOFF/HALF_TIME/FULL_TIME). BRACKET_DRAWN involves no team.
   const teamCodes = eventTeamCodes(event);
 
   // Highlight when the claimed person owns one of the involved teams.
@@ -249,7 +250,7 @@ function eventTeamCodes(event: FeedEvent): string[] {
     const code = (event.payload.teamCode as string) ?? event.teamCode;
     return code ? [code] : [];
   }
-  if (event.type === 'KICKOFF' || event.type === 'FULL_TIME') {
+  if (event.type === 'KICKOFF' || event.type === 'HALF_TIME' || event.type === 'FULL_TIME') {
     const home = event.payload.homeTeam as string | undefined;
     const away = event.payload.awayTeam as string | undefined;
     return [home, away].filter((c): c is string => !!c);
