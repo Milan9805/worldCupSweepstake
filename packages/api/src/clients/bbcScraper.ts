@@ -14,6 +14,7 @@ export interface ScrapedFixture {
   awayScore: number | null;
   status: MatchStatus;
   datetime: string; // ISO 8601 UTC
+  minute: string | null; // live clock label ("19'", "45+2'", "HT"); null unless LIVE
 }
 
 interface BbcEvent {
@@ -22,6 +23,7 @@ interface BbcEvent {
   startDateTime?: string;
   status?: string;
   statusComment?: { value?: string };
+  periodLabel?: { value?: string };
   // Some BBC payloads put scores at the top level instead of inside home/away.
   homeScore?: number | string | null;
   awayScore?: number | string | null;
@@ -169,14 +171,29 @@ function eventToFixture(event: BbcEvent): ScrapedFixture | null {
   const awayTla = teamNameToTla(awayName);
   if (!homeTla || !awayTla) return null;
 
+  const status = mapStatus(event);
+
   return {
     homeTeam: homeTla,
     awayTeam: awayTla,
     homeScore: extractScore(event, 'home'),
     awayScore: extractScore(event, 'away'),
-    status: mapStatus(event),
+    status,
     datetime,
+    // The clock is only meaningful in play; carry it solely for LIVE so a
+    // SCHEDULED/FINISHED row never surfaces a stale "90+5'".
+    minute: status === 'LIVE' ? extractMinute(event) : null,
   };
+}
+
+/**
+ * The live clock label as BBC presents it — "19'", "45+2'", "HT" — taken from
+ * statusComment (where the running time lives) and falling back to periodLabel.
+ * Returned verbatim so the UI can show exactly what a viewer expects.
+ */
+function extractMinute(event: BbcEvent): string | null {
+  const label = (event.statusComment?.value ?? event.periodLabel?.value ?? '').trim();
+  return label.length > 0 ? label : null;
 }
 
 function extractScore(event: BbcEvent, side: 'home' | 'away'): number | null {
@@ -240,8 +257,8 @@ function dedupe(fixtures: ScrapedFixture[]): ScrapedFixture[] {
 
 /**
  * Convert scraped fixtures into `Partial<Match>` patches that only touch
- * volatile fields (score + status). Stage, group, datetime, venue are
- * preserved from whatever the API previously wrote.
+ * volatile fields (score, status, live minute). Stage, group, datetime, venue
+ * are preserved from whatever the API previously wrote.
  *
  * Fixtures with no matching existing row are dropped (per the API-first
  * lifecycle: BBC never creates rows).
@@ -266,6 +283,7 @@ export function buildBbcPatches(
       homeScore: fixture.homeScore,
       awayScore: fixture.awayScore,
       status: fixture.status,
+      minute: fixture.minute,
     });
   }
 

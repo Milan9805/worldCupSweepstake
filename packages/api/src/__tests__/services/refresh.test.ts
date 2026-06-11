@@ -203,17 +203,24 @@ describe('refreshData', () => {
           awayScore: 0,
           status: 'LIVE',
           datetime: liveMatch.datetime,
+          minute: "19'",
         },
       ]);
       mockedBbc.buildBbcPatches.mockReturnValue([
-        { matchId: 'm-mex-rsa', homeScore: 1, awayScore: 0, status: 'LIVE' },
+        { matchId: 'm-mex-rsa', homeScore: 1, awayScore: 0, status: 'LIVE', minute: "19'" },
       ]);
 
       const result = await refreshData();
 
       expect(mockedBbc.fetchBbcFixtures).toHaveBeenCalled();
       expect(mockedDb.batchPutMatches).toHaveBeenCalledWith([
-        expect.objectContaining({ matchId: 'm-mex-rsa', homeScore: 1, awayScore: 0, status: 'LIVE' }),
+        expect.objectContaining({
+          matchId: 'm-mex-rsa',
+          homeScore: 1,
+          awayScore: 0,
+          status: 'LIVE',
+          minute: "19'",
+        }),
       ]);
       // KICKOFF (SCHEDULED→LIVE) and the goal are persisted as feed events.
       expect(mockedDb.putEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'KICKOFF' }));
@@ -297,6 +304,7 @@ describe('refreshData', () => {
           awayScore: 1,
           status: 'FINISHED',
           datetime: '2026-06-15T19:00:00Z',
+          minute: null,
         },
       ]);
       mockedBbc.buildBbcPatches.mockReturnValue([

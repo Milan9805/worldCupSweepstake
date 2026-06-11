@@ -176,7 +176,7 @@ sweepstake/
 | GET | `/api/teams` | Get all teams with stats |
 | GET | `/api/bracket` | Get tournament bracket |
 | GET | `/api/feed` | Recent activity-feed events (goals, kickoffs, results, eliminations) |
-| POST | `/api/refresh` | Refresh scores + TV channels (BBC fallback); also writes feed events |
+| POST | `/api/refresh` | Refresh scores + live minute + TV channels (BBC live overlay/fallback); also writes feed events |
 | POST | `/api/admin/login` | Admin authentication |
 | POST | `/api/admin/members` | Update group members |
 | POST | `/api/admin/assign` | Assign teams to people |
@@ -225,9 +225,14 @@ The refresh response is `{ matches, teams, source, refreshedAt }`.
   new state
   ([`packages/api/src/services/detectEvents.ts`](packages/api/src/services/detectEvents.ts)),
   written to a dedicated DynamoDB **`Events`** table, and read back via
-  `GET /api/feed`. The change-detection that already decides what to persist
-  gives idempotency for free (no duplicate events), and the feed reuses the
-  adaptive score-poll cadence (30s while a match is live, off when idle).
+  `GET /api/feed`. Each event carries a deterministic `eventId`
+  (e.g. `${matchId}#FULL_TIME`); because the `Events` sort key embeds the
+  detection timestamp, a re-detected event can land in a new row, so
+  `getRecentEvents` **dedupes by `eventId` at read time** (newest wins) to keep
+  the feed clean. The monotonic merge guard (see [BBC scraper](#bbc-scraper-live-scores--fallback))
+  stops a stale poll from re-triggering events, so this churn is rare in
+  practice. The feed reuses the adaptive score-poll cadence (30s while a match
+  is live, off when idle).
 
 ### Honours board (`/honours`)
 
@@ -439,9 +444,15 @@ terraform apply -var="football_data_api_key=YOUR_KEY" -var="jwt_secret=YOUR_SECR
 ### 4. What it provides
 
 - Match schedules (dates, times, venues)
-- Live scores and final results
-- Match status (SCHEDULED / LIVE / FINISHED)
+- Final results once a match is over
 - Group stage and knockout stage classification
+
+> ⚠️ **The free tier does not push live, in-play data.** During a match it keeps
+> returning the fixture as `TIMED` (→ `SCHEDULED`) with a null score until the
+> game is over — it never flips to `IN_PLAY` or carries a running scoreline.
+> Live scores, status, and the match minute therefore come from the **BBC
+> scraper** (see below), which the refresh consults whenever a match is in its
+> active window — not just when the API errors.
 
 ### 5. Rate limits
 
@@ -451,25 +462,43 @@ terraform apply -var="football_data_api_key=YOUR_KEY" -var="jwt_secret=YOUR_SECR
 | Standard | 30 |
 | Advanced | 60 |
 
-## BBC Scraper Fallback
+## BBC Scraper (live scores + fallback)
 
-If the football-data.org call fails (rate limit, outage, expired key, etc.),
-`/api/refresh` automatically falls back to scraping BBC's World Cup fixture
-pages for live scores. The response includes a `source` field so callers know
-which path was used:
+The BBC scraper plays **two roles**, because football-data.org's free tier
+doesn't serve in-play data (see the caveat above):
+
+1. **Live overlay (primary live source).** Whenever a match is in its active
+   window, `/api/refresh` scrapes BBC **on top of** the successful
+   football-data.org sync and overlays the live `homeScore`, `awayScore`,
+   `status`, and match `minute`. This is what actually drives live scores and
+   the KICKOFF / GOAL / FULL_TIME feed events.
+2. **Outage fallback.** If the football-data.org call itself fails (rate limit,
+   outage, expired key, etc.), the refresh falls back to BBC for the whole sync.
+
+The response includes a `source` field so callers know which path was used:
 
 | `source` | Meaning |
 | ---------- | --------- |
-| `api` | football-data.org returned fresh data |
-| `bbc` | football-data.org failed; scores came from BBC |
+| `api` | football-data.org returned fresh data; no live BBC patch applied this cycle |
+| `bbc` | scores/minute came from BBC — either the live overlay patched a match, or the API failed and BBC was the fallback |
 | `cache` | within cooldown, or both sources failed — returns DynamoDB state |
 
 When `source === 'bbc'`, the navbar shows an amber **"via BBC"** badge next to
 the Refresh button.
 
+### Don't-regress merge guard
+
+Because the free-tier API keeps returning a live match as `SCHEDULED` with null
+scores, the merge **never lets a stale source regress live state**: a known
+score is never overwritten back to `null`, and a status never moves backwards
+(`LIVE`/`FINISHED` → `SCHEDULED`). A genuine downward score correction (VAR) is
+still allowed — that's number → smaller number, not number → null. Without this,
+each API poll would wipe the score BBC just supplied and re-fire phantom
+kickoff/goal events.
+
 ### Lifecycle constraint
 
-The BBC fallback **only patches `homeScore`, `awayScore`, and `status` on
+The BBC patch **only touches `homeScore`, `awayScore`, `status`, and `minute` on
 matches that already exist in DynamoDB**. It never creates new rows. That means
 football-data.org (or seed data) must have populated the fixtures table at
 least once with the correct `stage`, `group`, `datetime`, and team TLAs before
@@ -486,13 +515,18 @@ walks
 and maps each event's team `fullName` to a TLA via
 [`packages/shared/src/teamNames.ts`](packages/shared/src/teamNames.ts). Both
 `2026-06` and `2026-07` pages are fetched in parallel and deduped by
-`(homeTLA, awayTLA, date)`.
+`(homeTLA, awayTLA, date)`. A live match is `status: "MidEvent"` with the clock
+in `statusComment` (`"19'"`, `"45+2'"`, `"HT"`); the scraper maps `MidEvent` →
+`LIVE` and carries that clock through as the match `minute` (only while live, so
+a finished row never shows a stale clock). `MatchList` renders it beside the
+**LIVE** badge.
 
-### Verifying the fallback locally
+### Verifying live scores / the fallback locally
 
 ```bash
-# Temporarily set an invalid API key (or unset FOOTBALL_DATA_API_KEY and
-# restart api:local). Then click Refresh in the UI, or:
+# The live overlay runs automatically whenever a match is in its active window.
+# To force the *fallback* path, temporarily set an invalid API key (or unset
+# FOOTBALL_DATA_API_KEY and restart api:local), then click Refresh, or:
 curl -s -X POST http://localhost:3001/api/refresh | jq '.data.source'
 # → "bbc"
 ```

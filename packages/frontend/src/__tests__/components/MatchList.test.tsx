@@ -44,6 +44,19 @@ describe('MatchList', () => {
     expect(screen.getByText('LIVE')).toBeInTheDocument();
   });
 
+  it('shows the live minute alongside the LIVE badge', () => {
+    const matches = [makeMatch({ status: 'LIVE', homeScore: 1, awayScore: 0, minute: "19'" })];
+    render(<MatchList matches={matches} />);
+    expect(screen.getByText('LIVE')).toBeInTheDocument();
+    expect(screen.getByText("19'")).toBeInTheDocument();
+  });
+
+  it('does not show a stale minute on a finished match', () => {
+    const matches = [makeMatch({ status: 'FINISHED', homeScore: 2, awayScore: 1, minute: "90'" })];
+    render(<MatchList matches={matches} />);
+    expect(screen.queryByText("90'")).not.toBeInTheDocument();
+  });
+
   it('shows FT badge for finished matches', () => {
     const matches = [makeMatch({ status: 'FINISHED', homeScore: 3, awayScore: 2 })];
     render(<MatchList matches={matches} />);

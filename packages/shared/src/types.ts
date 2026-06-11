@@ -65,6 +65,10 @@ export interface Match {
   datetime: string; // ISO 8601
   venue: string;
   channels?: ChannelBroadcast[]; // UK broadcast channels with brand colours
+  // Live clock label from the score source while a match is in play, verbatim
+  // from the upstream ("19'", "45+2'", "HT"). Only meaningful when status is
+  // LIVE; may be stale on a SCHEDULED/FINISHED row, so consumers gate on status.
+  minute?: string | null;
 }
 
 // ===== Feed Events =====

@@ -15,12 +15,19 @@ const DEFAULT_CHANNEL_BG = '#374151';
 const DEFAULT_CHANNEL_FG = '#ffffff';
 
 export default function MatchList({ matches, teamOwners, teamFlags }: MatchListProps) {
-  const statusBadge = (status: string) => {
-    switch (status) {
+  const statusBadge = (match: Match) => {
+    switch (match.status) {
       case 'LIVE':
         return (
-          <span className="bg-red-600 text-white text-xs px-2 py-0.5 rounded animate-pulse">
-            LIVE
+          <span className="inline-flex flex-col items-end gap-0.5">
+            <span className="bg-red-600 text-white text-xs px-2 py-0.5 rounded animate-pulse">
+              LIVE
+            </span>
+            {match.minute && (
+              <span className="text-red-400 text-[11px] font-semibold tabular-nums">
+                {match.minute}
+              </span>
+            )}
           </span>
         );
       case 'FINISHED':
@@ -115,7 +122,7 @@ export default function MatchList({ matches, teamOwners, teamFlags }: MatchListP
                 the card. On mobile it collapses to the badge width (0 when SCHEDULED)
                 so the owner names aren't starved of horizontal space. */}
             <div className="w-auto shrink-0 text-right text-xs sm:w-16">
-              {statusBadge(match.status)}
+              {statusBadge(match)}
             </div>
           </div>
         </div>

@@ -28,11 +28,12 @@ describe('parseBbcHtml (real BBC snapshot)', () => {
     expect(opener?.datetime).toBe('2026-06-11T19:00:00Z');
   });
 
-  it('marks every pre-tournament event as SCHEDULED with null scores', () => {
+  it('marks every pre-tournament event as SCHEDULED with null scores and no minute', () => {
     for (const f of fixtures) {
       expect(f.status).toBe('SCHEDULED');
       expect(f.homeScore).toBeNull();
       expect(f.awayScore).toBeNull();
+      expect(f.minute).toBeNull();
     }
   });
 
@@ -99,9 +100,11 @@ describe('parseBbcHtml (status mapping for not-yet-observed states)', () => {
     expect(f.homeScore).toBe(1);
     expect(f.awayScore).toBe(0);
     expect(f.status).toBe('LIVE');
+    // The running clock is surfaced verbatim for live matches.
+    expect(f.minute).toBe("19'");
   });
 
-  it('maps half-time (MidEvent / "HT") → LIVE, not FINISHED', () => {
+  it('maps half-time (MidEvent / "HT") → LIVE with minute "HT"', () => {
     const html = makeHtmlWith({
       home: { fullName: 'Mexico', score: 1 },
       away: { fullName: 'South Africa', score: 0 },
@@ -109,10 +112,12 @@ describe('parseBbcHtml (status mapping for not-yet-observed states)', () => {
       status: 'MidEvent',
       statusComment: { value: 'HT' },
     });
-    expect(parseBbcHtml(html)[0].status).toBe('LIVE');
+    const [f] = parseBbcHtml(html);
+    expect(f.status).toBe('LIVE');
+    expect(f.minute).toBe('HT');
   });
 
-  it('maps PostEvent / "FT" → FINISHED (not LIVE despite the digit-free clock)', () => {
+  it('maps PostEvent / "FT" → FINISHED with a null minute (no stale clock)', () => {
     const html = makeHtmlWith({
       home: { fullName: 'Mexico', score: 2 },
       away: { fullName: 'South Africa', score: 1 },
@@ -120,7 +125,9 @@ describe('parseBbcHtml (status mapping for not-yet-observed states)', () => {
       status: 'PostEvent',
       statusComment: { value: 'FT' },
     });
-    expect(parseBbcHtml(html)[0].status).toBe('FINISHED');
+    const [f] = parseBbcHtml(html);
+    expect(f.status).toBe('FINISHED');
+    expect(f.minute).toBeNull();
   });
 
   it('maps InProgress → LIVE', () => {
@@ -204,7 +211,7 @@ describe('buildBbcPatches', () => {
     },
   ];
 
-  it('produces a patch for an existing match', () => {
+  it('produces a patch for an existing match (carrying the live minute)', () => {
     const patches = buildBbcPatches(
       [
         {
@@ -214,12 +221,33 @@ describe('buildBbcPatches', () => {
           awayScore: 1,
           status: 'FINISHED',
           datetime: '2026-06-11T19:00:00Z',
+          minute: null,
         },
       ],
       existing,
     );
     expect(patches).toEqual([
-      { matchId: 'm-mex-rsa', homeScore: 2, awayScore: 1, status: 'FINISHED' },
+      { matchId: 'm-mex-rsa', homeScore: 2, awayScore: 1, status: 'FINISHED', minute: null },
+    ]);
+  });
+
+  it('carries the live minute through for an in-play match', () => {
+    const patches = buildBbcPatches(
+      [
+        {
+          homeTeam: 'MEX',
+          awayTeam: 'RSA',
+          homeScore: 1,
+          awayScore: 0,
+          status: 'LIVE',
+          datetime: '2026-06-11T19:00:00Z',
+          minute: "19'",
+        },
+      ],
+      existing,
+    );
+    expect(patches).toEqual([
+      { matchId: 'm-mex-rsa', homeScore: 1, awayScore: 0, status: 'LIVE', minute: "19'" },
     ]);
   });
 
@@ -233,6 +261,7 @@ describe('buildBbcPatches', () => {
           awayScore: 0,
           status: 'LIVE',
           datetime: '2026-06-11T19:05:00Z',
+          minute: "1'",
         },
       ],
       existing,
@@ -251,6 +280,7 @@ describe('buildBbcPatches', () => {
           awayScore: 1,
           status: 'FINISHED',
           datetime: '2026-06-11T19:00:00Z',
+          minute: null,
         },
       ],
       existing,
@@ -268,6 +298,7 @@ describe('buildBbcPatches', () => {
           awayScore: 1,
           status: 'FINISHED',
           datetime: '2026-06-12T19:00:00Z',
+          minute: null,
         },
       ],
       existing,

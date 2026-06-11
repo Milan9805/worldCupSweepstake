@@ -205,7 +205,10 @@ function matchChanged(existing: Match | undefined, next: Match): boolean {
     existing.stage !== next.stage ||
     existing.group !== next.group ||
     existing.datetime !== next.datetime ||
-    existing.venue !== next.venue
+    existing.venue !== next.venue ||
+    // The live clock advances every poll while a match is in play; treat it as
+    // a change so the ticking minute is actually persisted (it carries no event).
+    (existing.minute ?? null) !== (next.minute ?? null)
   );
 }
 
