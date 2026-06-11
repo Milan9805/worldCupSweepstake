@@ -11,6 +11,21 @@ function getApiKey(): Promise<string> {
 // under 2000 is the 2026 FIFA World Cup (verified 2026-05-22).
 const COMPETITION_ID = 2000;
 
+// football-data.org tags a few nations with the ISO-3166 alpha-3 code where our
+// data (and FIFA/BBC, via teamNames.ts) use the traditional football code.
+// Uruguay is the one that bites at this tournament: the API says "URY", but our
+// teams and fixtures key on "URU", so its fixtures rendered under a non-existent
+// team and its standings row never joined to the team (all-zero stats).
+// Translate the API's TLA to ours at ingestion so every downstream join
+// (fixture → team, standing → team) lines up on our canonical code.
+const TLA_OVERRIDES: Record<string, string> = {
+  URY: 'URU',
+};
+
+function normaliseTla(tla: string): string {
+  return TLA_OVERRIDES[tla] ?? tla;
+}
+
 // Rate limiting: football-data.org free tier allows 10 requests/minute
 const MAX_REQUESTS_PER_MINUTE = 10;
 const RATE_WINDOW_MS = 60_000;
@@ -85,8 +100,8 @@ export async function fetchMatches(): Promise<Partial<Match>[]> {
 
   return matches.map((m) => ({
     matchId: String(m.id),
-    homeTeam: m.homeTeam.tla,
-    awayTeam: m.awayTeam.tla,
+    homeTeam: normaliseTla(m.homeTeam.tla),
+    awayTeam: normaliseTla(m.awayTeam.tla),
     homeScore: m.score.fullTime.home,
     awayScore: m.score.fullTime.away,
     status: mapStatus(m.status),
@@ -99,7 +114,15 @@ export async function fetchMatches(): Promise<Partial<Match>[]> {
 
 export async function fetchStandings(): Promise<FootballDataStanding[]> {
   const data = await fetchFromApi<{ standings: FootballDataStanding[] }>(`/competitions/${COMPETITION_ID}/standings`);
-  return data.standings || [];
+  // Normalise each row's TLA to our canonical code so indexStandings keys the
+  // table by the same code the team records use (see TLA_OVERRIDES).
+  return (data.standings || []).map((standing) => ({
+    ...standing,
+    table: (standing.table ?? []).map((row) => ({
+      ...row,
+      team: { ...row.team, tla: normaliseTla(row.team.tla) },
+    })),
+  }));
 }
 
 function mapStatus(status: string): 'SCHEDULED' | 'LIVE' | 'FINISHED' {

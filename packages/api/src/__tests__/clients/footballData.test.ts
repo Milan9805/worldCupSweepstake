@@ -203,6 +203,35 @@ describe('footballData client', () => {
       expect(result[0].venue).toBe('TBC');
     });
 
+    it('normalises Uruguay TLA (URY → URU) on both home and away', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          matches: [{
+            id: 1, utcDate: '2026-06-14T18:00:00Z', status: 'SCHEDULED',
+            stage: 'GROUP_STAGE', group: 'GROUP_H',
+            homeTeam: { tla: 'URY', name: 'Uruguay' },
+            awayTeam: { tla: 'ESP', name: 'Spain' },
+            score: { fullTime: { home: null, away: null } },
+            venue: 'TBC',
+          }, {
+            id: 2, utcDate: '2026-06-21T22:00:00Z', status: 'SCHEDULED',
+            stage: 'GROUP_STAGE', group: 'GROUP_H',
+            homeTeam: { tla: 'CPV', name: 'Cabo Verde' },
+            awayTeam: { tla: 'URY', name: 'Uruguay' },
+            score: { fullTime: { home: null, away: null } },
+            venue: 'TBC',
+          }],
+        }),
+      });
+
+      const result = await fetchMatches();
+      expect(result[0].homeTeam).toBe('URU');
+      expect(result[0].awayTeam).toBe('ESP');
+      expect(result[1].homeTeam).toBe('CPV');
+      expect(result[1].awayTeam).toBe('URU');
+    });
+
     it('throws on API error response', async () => {
       mockFetch.mockResolvedValue({
         ok: false,
@@ -234,6 +263,27 @@ describe('footballData client', () => {
 
       const result = await fetchStandings();
       expect(result).toEqual(standings);
+    });
+
+    it('normalises Uruguay TLA (URY → URU) in standings rows', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          standings: [{
+            group: 'GROUP_H',
+            table: [
+              { position: 1, team: { tla: 'ESP', name: 'Spain' }, playedGames: 1, won: 1, draw: 0, lost: 0, goalsFor: 2, goalsAgainst: 0, goalDifference: 2, points: 3 },
+              { position: 2, team: { tla: 'URY', name: 'Uruguay' }, playedGames: 1, won: 1, draw: 0, lost: 0, goalsFor: 1, goalsAgainst: 0, goalDifference: 1, points: 3 },
+            ],
+          }],
+        }),
+      });
+
+      const result = await fetchStandings();
+      expect(result[0].table[0].team.tla).toBe('ESP');
+      expect(result[0].table[1].team.tla).toBe('URU');
+      // Other row fields are preserved untouched.
+      expect(result[0].table[1].points).toBe(3);
     });
 
     it('returns empty array when no standings', async () => {
