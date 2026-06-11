@@ -53,6 +53,22 @@ export interface ChannelBroadcast {
   fg: string;
 }
 
+/**
+ * A discrete in-match event for a single player — a goal or a booking — scraped
+ * verbatim from the BBC match data. Goal scorers and cards are surfaced this way
+ * (the running score itself lives on {@link Match}). `minute` is the clock label
+ * as BBC presents it ("9'", "45+2'"); `player` is BBC's (often abbreviated) name
+ * e.g. "J. Quiñones". A second yellow (a sending-off) is reported as RED_CARD.
+ */
+export type MatchActionType = 'GOAL' | 'YELLOW_CARD' | 'RED_CARD';
+
+export interface MatchAction {
+  team: string; // teamCode of the player's side, e.g. "RSA"
+  player: string; // player name, verbatim from BBC
+  type: MatchActionType;
+  minute: string; // clock label, verbatim ("9'", "49'")
+}
+
 export interface Match {
   matchId: string;
   homeTeam: string; // teamCode
@@ -69,11 +85,17 @@ export interface Match {
   // from the upstream ("19'", "45+2'", "HT"). Only meaningful when status is
   // LIVE; may be stale on a SCHEDULED/FINISHED row, so consumers gate on status.
   minute?: string | null;
+  // Goals + bookings scraped per-player from BBC, cumulative for the match (BBC
+  // carries the full list each poll). Drives the scorer/card feed events and the
+  // per-team card totals. Absent on rows scraped before this was added.
+  actions?: MatchAction[];
 }
 
 // ===== Feed Events =====
 export type FeedEventType =
   | 'GOAL'
+  | 'YELLOW_CARD'
+  | 'RED_CARD'
   | 'KICKOFF'
   | 'HALF_TIME'
   | 'FULL_TIME'

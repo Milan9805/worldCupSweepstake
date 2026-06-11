@@ -204,6 +204,7 @@ describe('refreshData', () => {
           status: 'LIVE',
           datetime: liveMatch.datetime,
           minute: "19'",
+          actions: [],
         },
       ]);
       mockedBbc.buildBbcPatches.mockReturnValue([
@@ -305,6 +306,7 @@ describe('refreshData', () => {
           status: 'FINISHED',
           datetime: '2026-06-15T19:00:00Z',
           minute: null,
+          actions: [],
         },
       ]);
       mockedBbc.buildBbcPatches.mockReturnValue([
@@ -440,6 +442,103 @@ describe('refreshData', () => {
         'Football-on-TV channel scrape failed:',
         expect.any(Error),
       );
+    });
+  });
+
+  describe('team stats refresh', () => {
+    const liveMatch = {
+      matchId: 'm-mex-rsa',
+      homeTeam: 'MEX',
+      awayTeam: 'RSA',
+      homeScore: 1,
+      awayScore: 0,
+      status: 'LIVE',
+      stage: 'GROUP_STAGE',
+      group: 'A',
+      datetime: new Date(NOW).toISOString(),
+      venue: 'Estadio Azteca',
+    };
+    const mexTeam = {
+      teamCode: 'MEX',
+      name: 'Mexico',
+      flag: '🇲🇽',
+      fifaRanking: 12,
+      groupLetter: 'A',
+      eliminated: false,
+      eliminatedAt: null,
+      stats: {
+        played: 0, wins: 0, draws: 0, losses: 0,
+        goalsFor: 0, goalsAgainst: 0, goalDifference: 0, points: 0,
+        yellowCards: 0, redCards: 0, possession: null, xG: null,
+      },
+    };
+
+    it('emits a card feed event and writes the team card count end-to-end', async () => {
+      mockedDb.getConfig.mockResolvedValue(undefined);
+      // API reports the (already live) row with no player actions...
+      mockedFootballData.fetchMatches.mockResolvedValue([liveMatch] as never);
+      mockedDb.getAllMatches.mockResolvedValue([liveMatch]);
+      mockedDb.getAllTeams.mockResolvedValue([mexTeam]);
+      // ...and the BBC overlay supplies a red card via the live patch.
+      mockedBbc.fetchBbcFixtures.mockResolvedValue([
+        { homeTeam: 'MEX', awayTeam: 'RSA', homeScore: 1, awayScore: 0, status: 'LIVE', datetime: liveMatch.datetime, minute: "49'", actions: [] },
+      ]);
+      mockedBbc.buildBbcPatches.mockReturnValue([
+        {
+          matchId: 'm-mex-rsa',
+          homeScore: 1,
+          awayScore: 0,
+          status: 'LIVE',
+          minute: "49'",
+          actions: [{ team: 'MEX', player: 'C. Montes', type: 'RED_CARD', minute: "49'" }],
+        },
+      ]);
+      // League table comes from the standings endpoint.
+      mockedFootballData.fetchStandings.mockResolvedValue([
+        {
+          group: 'A',
+          table: [
+            { position: 1, team: { tla: 'MEX', name: 'Mexico' }, playedGames: 1, won: 1, draw: 0, lost: 0, goalsFor: 1, goalsAgainst: 0, goalDifference: 1, points: 3 },
+          ],
+        },
+      ]);
+
+      await refreshData();
+
+      // The new booking became a RED_CARD feed event carrying the player + minute.
+      expect(mockedDb.putEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'RED_CARD',
+          teamCode: 'MEX',
+          payload: expect.objectContaining({ player: 'C. Montes', minute: "49'" }),
+        }),
+      );
+      // MEX's stats were rewritten: league record from standings, card count from actions.
+      expect(mockedDb.batchPutTeams).toHaveBeenCalledWith([
+        expect.objectContaining({
+          teamCode: 'MEX',
+          stats: expect.objectContaining({ points: 3, wins: 1, goalsFor: 1, redCards: 1 }),
+        }),
+      ]);
+    });
+
+    it('keeps prior league stats (and never throws) when the standings fetch fails', async () => {
+      mockedDb.getConfig.mockResolvedValue(undefined);
+      mockedFootballData.fetchMatches.mockResolvedValue([liveMatch] as never);
+      mockedDb.getAllMatches.mockResolvedValue([liveMatch]);
+      mockedDb.getAllTeams.mockResolvedValue([mexTeam]);
+      mockedFootballData.fetchStandings.mockRejectedValue(new Error('standings 429'));
+
+      const result = await refreshData();
+
+      // Refresh still succeeds; the standings failure is logged, not thrown.
+      expect(result.source).toBe('api');
+      expect(console.warn).toHaveBeenCalledWith(
+        'Standings fetch failed (keeping prior league stats):',
+        expect.any(Error),
+      );
+      // No card actions and no standings → MEX is unchanged → no team write.
+      expect(mockedDb.batchPutTeams).not.toHaveBeenCalled();
     });
   });
 });

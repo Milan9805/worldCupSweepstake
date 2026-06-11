@@ -1,9 +1,10 @@
-import { fetchMatches } from '../clients/footballData';
+import { fetchMatches, fetchStandings } from '../clients/footballData';
 import { fetchBbcFixtures, buildBbcPatches } from '../clients/bbcScraper';
 import { fetchTvListings, buildChannelPatches } from '../clients/footballTvScraper';
-import { getAllMatches, getAllTeams, batchPutMatches, getConfig, putConfig, putEvent } from '../db/dynamodb';
+import { getAllMatches, getAllTeams, batchPutMatches, batchPutTeams, getConfig, putConfig, putEvent } from '../db/dynamodb';
 import {
   Match,
+  MatchAction,
   MatchStatus,
   Team,
   RefreshSource,
@@ -14,6 +15,12 @@ import {
 } from '@sweepstake/shared';
 import { generateTreeIfReady, processKnockoutResults } from './generateTree';
 import { detectEvents } from './detectEvents';
+import {
+  deriveCardCounts,
+  indexStandings,
+  computeTeamStatUpdates,
+  LeagueStats,
+} from './teamStats';
 
 const REFRESH_COOLDOWN_MS = 20_000;
 
@@ -114,6 +121,29 @@ export async function refreshData(preloadedMatches?: Match[]): Promise<RefreshRe
   await generateTreeIfReady();
   await processKnockoutResults(matches);
 
+  // Refresh team stats: the league record from the API standings, card counts
+  // derived from the per-player match actions BBC supplies. A full, idempotent
+  // recompute (re-runs converge), written for only the teams that changed.
+  // Best-effort and independent — a failure here is logged, never blocks the
+  // refresh, and never undoes the score/event work above. Teams are re-read
+  // fresh so we overlay onto (not clobber) any elimination flags just written.
+  try {
+    const cardCounts = deriveCardCounts(matches);
+    let standings = new Map<string, LeagueStats>();
+    try {
+      standings = indexStandings(await fetchStandings());
+    } catch (standingsError) {
+      console.warn('Standings fetch failed (keeping prior league stats):', standingsError);
+    }
+    const freshTeams = (await getAllTeams()) as unknown as Team[];
+    const changedTeams = computeTeamStatUpdates(freshTeams, standings, cardCounts);
+    if (changedTeams.length > 0) {
+      await batchPutTeams(changedTeams as unknown as Record<string, unknown>[]);
+    }
+  } catch (statsError) {
+    console.warn('Team stats refresh failed:', statsError);
+  }
+
   return buildResponse(source, refreshedAt, matches);
 }
 
@@ -182,6 +212,17 @@ function applyUpdate<U extends { matchId?: string }>(
   if (merged.awayScore == null && existing.awayScore != null) merged.awayScore = existing.awayScore;
   if (STATUS_RANK[merged.status] < STATUS_RANK[existing.status]) merged.status = existing.status;
 
+  // Player actions (goals/cards) are cumulative within a match, so they never
+  // shrink mid-play. Don't let a source that omits them (football-data) or a
+  // transient empty BBC poll wipe the goals/cards we already have.
+  if (
+    (!merged.actions || merged.actions.length === 0) &&
+    existing.actions &&
+    existing.actions.length > 0
+  ) {
+    merged.actions = existing.actions;
+  }
+
   return merged;
 }
 
@@ -208,7 +249,24 @@ function matchChanged(existing: Match | undefined, next: Match): boolean {
     existing.venue !== next.venue ||
     // The live clock advances every poll while a match is in play; treat it as
     // a change so the ticking minute is actually persisted (it carries no event).
-    (existing.minute ?? null) !== (next.minute ?? null)
+    (existing.minute ?? null) !== (next.minute ?? null) ||
+    // A new goal/card with no score change (e.g. a booking) must still persist
+    // and run through detectEvents, so compare the action lists too.
+    !sameActions(existing.actions, next.actions)
+  );
+}
+
+/** Structural equality for two action lists (order-sensitive; BBC appends). */
+function sameActions(a: MatchAction[] | undefined, b: MatchAction[] | undefined): boolean {
+  const x = a ?? [];
+  const y = b ?? [];
+  if (x.length !== y.length) return false;
+  return x.every(
+    (action, i) =>
+      action.team === y[i].team &&
+      action.player === y[i].player &&
+      action.type === y[i].type &&
+      action.minute === y[i].minute,
   );
 }
 

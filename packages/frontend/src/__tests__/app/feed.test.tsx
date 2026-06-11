@@ -238,6 +238,109 @@ describe('FeedPage', () => {
     consoleSpy.mockRestore();
   });
 
+  it('renders a red-card event with marker, team, player and minute', async () => {
+    mockGetFeed.mockResolvedValue([
+      {
+        eventId: 'm6#RED_CARD#1',
+        ts: new Date().toISOString(),
+        type: 'RED_CARD',
+        teamCode: 'ENG',
+        matchId: 'm6',
+        payload: {
+          teamCode: 'ENG',
+          player: 'Y. Sithole',
+          minute: '49',
+          homeTeam: 'ENG',
+          awayTeam: 'GER',
+          stage: 'GROUP_STAGE',
+        },
+      },
+    ]);
+
+    render(<FeedPage />);
+
+    // Marker label + icon
+    expect(await screen.findByText('Red card')).toBeInTheDocument();
+    expect(screen.getByText('🟥')).toBeInTheDocument();
+    // Booked player's team (with owner bracket) is resolved
+    expect(screen.getByText(/England/)).toBeInTheDocument();
+    expect(screen.getByText('(Alice)')).toBeInTheDocument();
+    // Player name + minute
+    expect(screen.getByText(/Y\. Sithole 49'/)).toBeInTheDocument();
+  });
+
+  it('renders a yellow-card event with marker, player and minute', async () => {
+    mockGetFeed.mockResolvedValue([
+      {
+        eventId: 'm7#YELLOW_CARD#1',
+        ts: new Date().toISOString(),
+        type: 'YELLOW_CARD',
+        teamCode: 'GER',
+        matchId: 'm7',
+        payload: {
+          teamCode: 'GER',
+          player: 'T. Müller',
+          minute: '23',
+          homeTeam: 'ENG',
+          awayTeam: 'GER',
+          stage: 'GROUP_STAGE',
+        },
+      },
+    ]);
+
+    render(<FeedPage />);
+
+    expect(await screen.findByText('Yellow card')).toBeInTheDocument();
+    expect(screen.getByText('🟨')).toBeInTheDocument();
+    expect(screen.getByText(/Germany/)).toBeInTheDocument();
+    expect(screen.getByText(/T\. Müller 23'/)).toBeInTheDocument();
+  });
+
+  it('shows the scorer on a GOAL event when payload.scorer is present', async () => {
+    mockGetFeed.mockResolvedValue([
+      {
+        eventId: 'm8#GOAL#1-0',
+        ts: new Date().toISOString(),
+        type: 'GOAL',
+        teamCode: 'ENG',
+        matchId: 'm8',
+        payload: {
+          homeTeam: 'ENG',
+          awayTeam: 'GER',
+          homeScore: 1,
+          awayScore: 0,
+          teamCode: 'ENG',
+          scorer: 'J. Quiñones',
+          scorerMinute: '9',
+        },
+      },
+    ]);
+
+    render(<FeedPage />);
+
+    await screen.findByText('1–0');
+    expect(screen.getByText(/J\. Quiñones 9'/)).toBeInTheDocument();
+  });
+
+  it('renders a GOAL event without a scorer (scoreline only, no crash)', async () => {
+    mockGetFeed.mockResolvedValue([
+      {
+        eventId: 'm9#GOAL#2-1',
+        ts: new Date().toISOString(),
+        type: 'GOAL',
+        teamCode: 'ENG',
+        matchId: 'm9',
+        payload: { homeTeam: 'ENG', awayTeam: 'GER', homeScore: 2, awayScore: 1, teamCode: 'ENG' },
+      },
+    ]);
+
+    render(<FeedPage />);
+
+    expect(await screen.findByText('2–1')).toBeInTheDocument();
+    // No scorer span rendered (no "·" separator).
+    expect(screen.queryByText(/·/)).not.toBeInTheDocument();
+  });
+
   it('redirects to home when there is no group key and none stored', () => {
     mockGroupKey = null;
     mockGroup = null;

@@ -1,4 +1,4 @@
-import { FeedEvent, Match, Team } from '@sweepstake/shared';
+import { FeedEvent, Match, MatchAction, Team } from '@sweepstake/shared';
 
 /**
  * Compute the feed events implied by a single match transitioning from
@@ -31,9 +31,19 @@ export function detectEvents(
   const nextHome = merged.homeScore ?? 0;
   const nextAway = merged.awayScore ?? 0;
 
+  // Per-player goal/booking actions. BBC carries the full cumulative list each
+  // poll, so a new item is one whose stable key isn't already in `existing`.
+  // `actions` is absent on old rows / in tests that don't set it; default to
+  // [] so every action-derived addition below is a no-op when it's missing.
+  const key = (a: MatchAction): string =>
+    `${a.team}|${a.type}|${a.player}|${a.minute}`;
+  const prev = existing?.actions ?? [];
+  const next = merged.actions ?? [];
+  const prevKeys = new Set(prev.map(key));
+
   // ===== GOAL — one event per side whose score increased =====
   if (nextHome > prevHome) {
-    events.push({
+    const goal: FeedEvent = {
       eventId: `${matchId}#GOAL#${nextHome}-${nextAway}`,
       ts,
       type: 'GOAL',
@@ -48,10 +58,12 @@ export function detectEvents(
         side: 'home',
         stage: merged.stage,
       },
-    });
+    };
+    enrichScorer(goal, next, prevKeys, merged.homeTeam, key);
+    events.push(goal);
   }
   if (nextAway > prevAway) {
-    events.push({
+    const goal: FeedEvent = {
       eventId: `${matchId}#GOAL#${nextHome}-${nextAway}`,
       ts,
       type: 'GOAL',
@@ -64,6 +76,31 @@ export function detectEvents(
         awayScore: nextAway,
         scoringTeam: merged.awayTeam,
         side: 'away',
+        stage: merged.stage,
+      },
+    };
+    enrichScorer(goal, next, prevKeys, merged.awayTeam, key);
+    events.push(goal);
+  }
+
+  // ===== CARDS — one event per new booking action =====
+  // Bookings are surfaced from the per-player action list, not the score; a
+  // card already present in `existing` (same key) must not re-emit.
+  for (const a of next) {
+    if (a.type !== 'YELLOW_CARD' && a.type !== 'RED_CARD') continue;
+    if (prevKeys.has(key(a))) continue;
+    events.push({
+      eventId: `${matchId}#${a.type}#${a.team}#${a.player}#${a.minute}`,
+      ts,
+      type: a.type,
+      teamCode: a.team,
+      matchId,
+      payload: {
+        teamCode: a.team,
+        player: a.player,
+        minute: a.minute,
+        homeTeam: merged.homeTeam,
+        awayTeam: merged.awayTeam,
         stage: merged.stage,
       },
     });
@@ -154,6 +191,29 @@ export function detectEvents(
   }
 
   return events;
+}
+
+/**
+ * Attach `scorer`/`scorerMinute` to a GOAL event from the per-player action
+ * list. The score delta tells us a side scored; the actions tell us who. We
+ * only enrich when EXACTLY ONE new GOAL action exists for that side this
+ * transition — zero (actions absent/lagging) or many (ambiguous which goal the
+ * delta is) leaves the goal scorer-less rather than guessing.
+ */
+function enrichScorer(
+  goal: FeedEvent,
+  next: MatchAction[],
+  prevKeys: Set<string>,
+  teamCode: string,
+  key: (a: MatchAction) => string
+): void {
+  const newGoals = next.filter(
+    (a) => a.type === 'GOAL' && a.team === teamCode && !prevKeys.has(key(a))
+  );
+  if (newGoals.length === 1) {
+    goal.payload.scorer = newGoals[0].player;
+    goal.payload.scorerMinute = newGoals[0].minute;
+  }
 }
 
 /**

@@ -11,6 +11,8 @@ import { FeedEvent, FeedEventType, Person, Team } from '@sweepstake/shared';
 // Icon + human label per event type, used for the timeline row marker.
 const EVENT_META: Record<FeedEventType, { icon: string; label: string }> = {
   GOAL: { icon: '⚽', label: 'Goal' },
+  YELLOW_CARD: { icon: '🟨', label: 'Yellow card' },
+  RED_CARD: { icon: '🟥', label: 'Red card' },
   KICKOFF: { icon: '🟢', label: 'Kick-off' },
   HALF_TIME: { icon: '⏸️', label: 'Half time' },
   FULL_TIME: { icon: '🏁', label: 'Full time' },
@@ -229,24 +231,56 @@ function EventHeadline({
     );
   }
 
+  // A booking: the booked player's team, then the player name + minute.
+  if (event.type === 'YELLOW_CARD' || event.type === 'RED_CARD') {
+    const code = (p.teamCode as string) ?? event.teamCode;
+    const player = p.player as string | undefined;
+    const minute = p.minute as string | undefined;
+    return (
+      <span>
+        <TeamLabel code={code} teamsByCode={teamsByCode} ownersByTeam={ownersByTeam} />{' '}
+        <span className="text-green-100">
+          — {player}
+          {minute ? ` ${minute}'` : ''}
+        </span>
+      </span>
+    );
+  }
+
   const home = p.homeTeam as string | undefined;
   const away = p.awayTeam as string | undefined;
   const homeScore = p.homeScore as number | undefined;
   const awayScore = p.awayScore as number | undefined;
   const hasScore = typeof homeScore === 'number' && typeof awayScore === 'number';
 
+  // GOAL events may carry the scorer (+ minute) when it's known; show it after
+  // the scoreline. Other match events (KICKOFF/HALF_TIME/FULL_TIME) never do.
+  const scorer = event.type === 'GOAL' ? (p.scorer as string | undefined) : undefined;
+  const scorerMinute = p.scorerMinute as string | undefined;
+
   return (
     <span>
       <TeamLabel code={home} teamsByCode={teamsByCode} ownersByTeam={ownersByTeam} />{' '}
       {hasScore && <span className="font-bold">{homeScore}–{awayScore}</span>}{' '}
       <TeamLabel code={away} teamsByCode={teamsByCode} ownersByTeam={ownersByTeam} />
+      {scorer && (
+        <span className="text-green-100">
+          {' '}· {scorer}
+          {scorerMinute ? ` ${scorerMinute}'` : ''}
+        </span>
+      )}
     </span>
   );
 }
 
 // The team codes an event involves, used for owner resolution + highlighting.
 function eventTeamCodes(event: FeedEvent): string[] {
-  if (event.type === 'GOAL' || event.type === 'ELIMINATION') {
+  if (
+    event.type === 'GOAL' ||
+    event.type === 'ELIMINATION' ||
+    event.type === 'YELLOW_CARD' ||
+    event.type === 'RED_CARD'
+  ) {
     const code = (event.payload.teamCode as string) ?? event.teamCode;
     return code ? [code] : [];
   }

@@ -244,6 +244,165 @@ describe('detectEvents', () => {
     });
   });
 
+  describe('cards', () => {
+    it('emits a YELLOW_CARD for a new booking action', () => {
+      const existing = makeMatch({ status: 'LIVE', homeScore: 0, awayScore: 0 });
+      const merged = makeMatch({
+        status: 'LIVE',
+        homeScore: 0,
+        awayScore: 0,
+        actions: [{ team: 'ENG', player: 'Stones', type: 'YELLOW_CARD', minute: "34'" }],
+      });
+
+      const events = detectEvents(existing, merged, NO_TEAMS);
+
+      const cards = events.filter((e) => e.type === 'YELLOW_CARD');
+      expect(cards).toHaveLength(1);
+      expect(cards[0]).toMatchObject({
+        eventId: "m1#YELLOW_CARD#ENG#Stones#34'",
+        type: 'YELLOW_CARD',
+        teamCode: 'ENG',
+        matchId: 'm1',
+        payload: {
+          teamCode: 'ENG',
+          player: 'Stones',
+          minute: "34'",
+          homeTeam: 'ENG',
+          awayTeam: 'BRA',
+        },
+      });
+    });
+
+    it('emits a RED_CARD for a new sending-off action', () => {
+      const existing = makeMatch({ status: 'LIVE', homeScore: 0, awayScore: 0 });
+      const merged = makeMatch({
+        status: 'LIVE',
+        homeScore: 0,
+        awayScore: 0,
+        actions: [{ team: 'BRA', player: 'Casemiro', type: 'RED_CARD', minute: "61'" }],
+      });
+
+      const events = detectEvents(existing, merged, NO_TEAMS);
+
+      const cards = events.filter((e) => e.type === 'RED_CARD');
+      expect(cards).toHaveLength(1);
+      expect(cards[0]).toMatchObject({
+        eventId: "m1#RED_CARD#BRA#Casemiro#61'",
+        type: 'RED_CARD',
+        teamCode: 'BRA',
+        payload: { teamCode: 'BRA', player: 'Casemiro', minute: "61'" },
+      });
+    });
+
+    it('does not re-emit a card already present in existing.actions', () => {
+      const card = { team: 'ENG', player: 'Stones', type: 'YELLOW_CARD' as const, minute: "34'" };
+      const existing = makeMatch({ status: 'LIVE', homeScore: 0, awayScore: 0, actions: [card] });
+      const merged = makeMatch({ status: 'LIVE', homeScore: 0, awayScore: 0, actions: [card] });
+
+      const events = detectEvents(existing, merged, NO_TEAMS);
+
+      expect(events.some((e) => e.type === 'YELLOW_CARD' || e.type === 'RED_CARD')).toBe(false);
+    });
+
+    it('emits both cards when two different bookings appear in one transition', () => {
+      const existing = makeMatch({ status: 'LIVE', homeScore: 0, awayScore: 0, actions: [] });
+      const merged = makeMatch({
+        status: 'LIVE',
+        homeScore: 0,
+        awayScore: 0,
+        actions: [
+          { team: 'ENG', player: 'Stones', type: 'YELLOW_CARD', minute: "34'" },
+          { team: 'BRA', player: 'Casemiro', type: 'RED_CARD', minute: "61'" },
+        ],
+      });
+
+      const events = detectEvents(existing, merged, NO_TEAMS);
+
+      expect(events.filter((e) => e.type === 'YELLOW_CARD')).toHaveLength(1);
+      expect(events.filter((e) => e.type === 'RED_CARD')).toHaveLength(1);
+      const ids = events
+        .filter((e) => e.type === 'YELLOW_CARD' || e.type === 'RED_CARD')
+        .map((e) => e.eventId)
+        .sort();
+      expect(ids).toEqual(["m1#RED_CARD#BRA#Casemiro#61'", "m1#YELLOW_CARD#ENG#Stones#34'"]);
+    });
+  });
+
+  describe('GOAL scorer enrichment', () => {
+    it('adds scorer/scorerMinute for a single new home goal action', () => {
+      const existing = makeMatch({ status: 'LIVE', homeScore: 0, awayScore: 0, actions: [] });
+      const merged = makeMatch({
+        status: 'LIVE',
+        homeScore: 1,
+        awayScore: 0,
+        actions: [{ team: 'ENG', player: 'Kane', type: 'GOAL', minute: "23'" }],
+      });
+
+      const events = detectEvents(existing, merged, NO_TEAMS);
+
+      const goal = events.find((e) => e.type === 'GOAL');
+      expect(goal).toBeDefined();
+      expect(goal?.payload).toMatchObject({
+        scoringTeam: 'ENG',
+        side: 'home',
+        scorer: 'Kane',
+        scorerMinute: "23'",
+      });
+    });
+
+    it('adds scorer/scorerMinute for a single new away goal action', () => {
+      const existing = makeMatch({ status: 'LIVE', homeScore: 1, awayScore: 0, actions: [] });
+      const merged = makeMatch({
+        status: 'LIVE',
+        homeScore: 1,
+        awayScore: 1,
+        actions: [{ team: 'BRA', player: 'Vinicius', type: 'GOAL', minute: "70'" }],
+      });
+
+      const events = detectEvents(existing, merged, NO_TEAMS);
+
+      const goal = events.find((e) => e.type === 'GOAL');
+      expect(goal?.payload).toMatchObject({
+        scoringTeam: 'BRA',
+        side: 'away',
+        scorer: 'Vinicius',
+        scorerMinute: "70'",
+      });
+    });
+
+    it('leaves the goal scorer-less when two new home goal actions are ambiguous', () => {
+      const existing = makeMatch({ status: 'LIVE', homeScore: 0, awayScore: 0, actions: [] });
+      const merged = makeMatch({
+        status: 'LIVE',
+        homeScore: 1,
+        awayScore: 0,
+        actions: [
+          { team: 'ENG', player: 'Kane', type: 'GOAL', minute: "23'" },
+          { team: 'ENG', player: 'Bellingham', type: 'GOAL', minute: "24'" },
+        ],
+      });
+
+      const events = detectEvents(existing, merged, NO_TEAMS);
+
+      const goal = events.find((e) => e.type === 'GOAL');
+      expect(goal).toBeDefined();
+      expect(goal?.payload).not.toHaveProperty('scorer');
+      expect(goal?.payload).not.toHaveProperty('scorerMinute');
+    });
+
+    it('still emits the GOAL with no scorer when merged.actions is undefined', () => {
+      const existing = makeMatch({ homeScore: 0, awayScore: 0, status: 'LIVE' });
+      const merged = makeMatch({ homeScore: 1, awayScore: 0, status: 'LIVE' });
+
+      const events = detectEvents(existing, merged, NO_TEAMS);
+
+      const goal = events.find((e) => e.type === 'GOAL');
+      expect(goal?.eventId).toBe('m1#GOAL#1-0');
+      expect(goal?.payload).not.toHaveProperty('scorer');
+      expect(goal?.payload).not.toHaveProperty('scorerMinute');
+    });
+  });
+
   describe('no change', () => {
     it('returns [] when existing and merged are the same reference', () => {
       const m = makeMatch({ homeScore: 1, awayScore: 0, status: 'LIVE' });

@@ -42,7 +42,7 @@ interface FootballDataMatch {
   venue: string | null;
 }
 
-interface FootballDataStanding {
+export interface FootballDataStanding {
   group: string;
   table: {
     position: number;

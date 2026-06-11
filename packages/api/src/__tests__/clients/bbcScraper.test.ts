@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { parseBbcHtml, buildBbcPatches, fetchBbcFixtures } from '../../clients/bbcScraper';
-import { Match } from '@sweepstake/shared';
+import { Match, MatchAction } from '@sweepstake/shared';
 
 const FIXTURE_PATH = path.resolve(__dirname, '../fixtures/bbc-sample.html');
 const html = fs.readFileSync(FIXTURE_PATH, 'utf8');
@@ -34,6 +34,12 @@ describe('parseBbcHtml (real BBC snapshot)', () => {
       expect(f.homeScore).toBeNull();
       expect(f.awayScore).toBeNull();
       expect(f.minute).toBeNull();
+    }
+  });
+
+  it('carries an empty actions array for every pre-tournament event (no goals/cards yet)', () => {
+    for (const f of fixtures) {
+      expect(f.actions).toEqual([]);
     }
   });
 
@@ -177,6 +183,165 @@ describe('parseBbcHtml (status mapping for not-yet-observed states)', () => {
   });
 });
 
+describe('parseBbcHtml (goal + booking actions)', () => {
+  function makeHtmlWith(event: Record<string, unknown>): string {
+    const data = {
+      data: {
+        'sport-data-scores-fixtures?x=1': {
+          data: {
+            eventGroups: [{ secondaryGroups: [{ events: [event] }] }],
+          },
+        },
+      },
+    };
+    const inner = JSON.stringify(data);
+    const outer = JSON.stringify(inner);
+    return `<html><body><script>window.__INITIAL_DATA__=${outer};</script></body></html>`;
+  }
+
+  // Shape verified against live data (Mexico v South Africa, 2026-06-11): each
+  // side's `actions` is a per-player list, each carrying an inner action list.
+  function player(
+    playerName: string,
+    actionType: string,
+    inners: { type: string; value?: string }[],
+  ): Record<string, unknown> {
+    return {
+      playerUrn: `urn:bbc:sportsdata:football:player:s-${playerName}`,
+      playerName,
+      actionType,
+      actions: inners.map((i) => ({
+        type: i.type,
+        typeLabel: { value: i.type, accessible: i.type },
+        timeLabel: { value: i.value ?? '', accessible: i.value ?? '' },
+      })),
+    };
+  }
+
+  it('flattens a home-side goal into a GOAL action with the home TLA', () => {
+    const html = makeHtmlWith({
+      home: { fullName: 'Mexico', score: 1, actions: [player('J. Quiñones', 'goal', [{ type: 'Goal', value: "9'" }])] },
+      away: { fullName: 'South Africa', score: 0 },
+      startDateTime: '2026-06-11T19:00:00Z',
+      status: 'MidEvent',
+      statusComment: { value: "19'" },
+    });
+    const [f] = parseBbcHtml(html);
+    expect(f.actions).toContainEqual({
+      team: 'MEX',
+      player: 'J. Quiñones',
+      type: 'GOAL',
+      minute: "9'",
+    });
+  });
+
+  it('classifies an away-side "Red Card" as RED_CARD with the away TLA', () => {
+    const html = makeHtmlWith({
+      home: { fullName: 'Mexico', score: 1 },
+      away: { fullName: 'South Africa', score: 0, actions: [player('Y. Sithole', 'card', [{ type: 'Red Card', value: "49'" }])] },
+      startDateTime: '2026-06-11T19:00:00Z',
+      status: 'MidEvent',
+      statusComment: { value: "49'" },
+    });
+    const [f] = parseBbcHtml(html);
+    expect(f.actions).toContainEqual({
+      team: 'RSA',
+      player: 'Y. Sithole',
+      type: 'RED_CARD',
+      minute: "49'",
+    });
+  });
+
+  it('classifies a "Yellow Card" as YELLOW_CARD', () => {
+    const html = makeHtmlWith({
+      home: { fullName: 'Mexico', score: 0, actions: [player('E. Álvarez', 'card', [{ type: 'Yellow Card', value: "23'" }])] },
+      away: { fullName: 'South Africa', score: 0 },
+      startDateTime: '2026-06-11T19:00:00Z',
+      status: 'MidEvent',
+      statusComment: { value: "30'" },
+    });
+    const [f] = parseBbcHtml(html);
+    expect(f.actions).toContainEqual({
+      team: 'MEX',
+      player: 'E. Álvarez',
+      type: 'YELLOW_CARD',
+      minute: "23'",
+    });
+  });
+
+  it('classifies a "Yellow-Red Card" (second yellow) as RED_CARD', () => {
+    const html = makeHtmlWith({
+      home: { fullName: 'Mexico', score: 0 },
+      away: { fullName: 'South Africa', score: 0, actions: [player('Y. Sithole', 'card', [{ type: 'Yellow-Red Card', value: "71'" }])] },
+      startDateTime: '2026-06-11T19:00:00Z',
+      status: 'MidEvent',
+      statusComment: { value: "71'" },
+    });
+    const [f] = parseBbcHtml(html);
+    expect(f.actions).toContainEqual({
+      team: 'RSA',
+      player: 'Y. Sithole',
+      type: 'RED_CARD',
+      minute: "71'",
+    });
+  });
+
+  it('ignores actions whose actionType is unrecognised (e.g. substitution)', () => {
+    const html = makeHtmlWith({
+      home: { fullName: 'Mexico', score: 0, actions: [player('H. Lozano', 'substitution', [{ type: 'Substitution', value: "60'" }])] },
+      away: { fullName: 'South Africa', score: 0 },
+      startDateTime: '2026-06-11T19:00:00Z',
+      status: 'MidEvent',
+      statusComment: { value: "60'" },
+    });
+    const [f] = parseBbcHtml(html);
+    expect(f.actions).toEqual([]);
+  });
+
+  it('surfaces every inner action when a player has more than one (goal then card)', () => {
+    const html = makeHtmlWith({
+      home: {
+        fullName: 'Mexico',
+        score: 1,
+        // BBC groups a player's events; a scorer who is later booked carries both.
+        actions: [
+          {
+            playerUrn: 'urn:bbc:sportsdata:football:player:s-raul',
+            playerName: 'R. Jiménez',
+            actionType: 'goal',
+            actions: [
+              { type: 'Goal', timeLabel: { value: "12'" } },
+              { type: 'Yellow Card', timeLabel: { value: "55'" } },
+            ],
+          },
+        ],
+      },
+      away: { fullName: 'South Africa', score: 0 },
+      startDateTime: '2026-06-11T19:00:00Z',
+      status: 'MidEvent',
+      statusComment: { value: "60'" },
+    });
+    const [f] = parseBbcHtml(html);
+    // Note: the outer actionType ("goal") drives classification, so the inner
+    // "Yellow Card" here surfaces as GOAL — both inner actions still appear.
+    expect(f.actions).toHaveLength(2);
+    expect(f.actions[0]).toMatchObject({ team: 'MEX', player: 'R. Jiménez', minute: "12'" });
+    expect(f.actions[1]).toMatchObject({ team: 'MEX', player: 'R. Jiménez', minute: "55'" });
+  });
+
+  it('orders home-side actions before away-side actions', () => {
+    const html = makeHtmlWith({
+      home: { fullName: 'Mexico', score: 1, actions: [player('H. Goal', 'goal', [{ type: 'Goal', value: "5'" }])] },
+      away: { fullName: 'South Africa', score: 1, actions: [player('A. Goal', 'goal', [{ type: 'Goal', value: "80'" }])] },
+      startDateTime: '2026-06-11T19:00:00Z',
+      status: 'MidEvent',
+      statusComment: { value: "85'" },
+    });
+    const [f] = parseBbcHtml(html);
+    expect(f.actions.map((a: MatchAction) => a.team)).toEqual(['MEX', 'RSA']);
+  });
+});
+
 describe('parseBbcHtml edge cases', () => {
   it('returns [] when the hydration blob is absent', () => {
     expect(parseBbcHtml('<html><body><p>no data</p></body></html>')).toEqual([]);
@@ -222,12 +387,20 @@ describe('buildBbcPatches', () => {
           status: 'FINISHED',
           datetime: '2026-06-11T19:00:00Z',
           minute: null,
+          actions: [],
         },
       ],
       existing,
     );
     expect(patches).toEqual([
-      { matchId: 'm-mex-rsa', homeScore: 2, awayScore: 1, status: 'FINISHED', minute: null },
+      {
+        matchId: 'm-mex-rsa',
+        homeScore: 2,
+        awayScore: 1,
+        status: 'FINISHED',
+        minute: null,
+        actions: [],
+      },
     ]);
   });
 
@@ -242,13 +415,45 @@ describe('buildBbcPatches', () => {
           status: 'LIVE',
           datetime: '2026-06-11T19:00:00Z',
           minute: "19'",
+          actions: [],
         },
       ],
       existing,
     );
     expect(patches).toEqual([
-      { matchId: 'm-mex-rsa', homeScore: 1, awayScore: 0, status: 'LIVE', minute: "19'" },
+      {
+        matchId: 'm-mex-rsa',
+        homeScore: 1,
+        awayScore: 0,
+        status: 'LIVE',
+        minute: "19'",
+        actions: [],
+      },
     ]);
+  });
+
+  it('carries non-empty actions through into the patch', () => {
+    const actions: MatchAction[] = [
+      { team: 'MEX', player: 'J. Quiñones', type: 'GOAL', minute: "9'" },
+      { team: 'RSA', player: 'Y. Sithole', type: 'RED_CARD', minute: "49'" },
+    ];
+    const patches = buildBbcPatches(
+      [
+        {
+          homeTeam: 'MEX',
+          awayTeam: 'RSA',
+          homeScore: 1,
+          awayScore: 0,
+          status: 'LIVE',
+          datetime: '2026-06-11T19:00:00Z',
+          minute: "49'",
+          actions,
+        },
+      ],
+      existing,
+    );
+    expect(patches).toHaveLength(1);
+    expect(patches[0].actions).toEqual(actions);
   });
 
   it('tolerates kickoff time drift within the same day', () => {
@@ -262,6 +467,7 @@ describe('buildBbcPatches', () => {
           status: 'LIVE',
           datetime: '2026-06-11T19:05:00Z',
           minute: "1'",
+          actions: [],
         },
       ],
       existing,
@@ -281,6 +487,7 @@ describe('buildBbcPatches', () => {
           status: 'FINISHED',
           datetime: '2026-06-11T19:00:00Z',
           minute: null,
+          actions: [],
         },
       ],
       existing,
@@ -299,6 +506,7 @@ describe('buildBbcPatches', () => {
           status: 'FINISHED',
           datetime: '2026-06-12T19:00:00Z',
           minute: null,
+          actions: [],
         },
       ],
       existing,

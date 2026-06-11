@@ -81,6 +81,40 @@ export async function putTeam(team: Record<string, unknown>) {
   );
 }
 
+/**
+ * Write many team rows in as few requests as possible — same chunk/retry shape
+ * as {@link batchPutMatches}. Used by the stats refresh to persist the (usually
+ * small) set of teams whose league record or card counts actually changed. A
+ * no-op for an empty list.
+ */
+export async function batchPutTeams(teams: Record<string, unknown>[]): Promise<void> {
+  const chunks: Record<string, unknown>[][] = [];
+  for (let i = 0; i < teams.length; i += BATCH_WRITE_MAX) {
+    chunks.push(teams.slice(i, i + BATCH_WRITE_MAX));
+  }
+  await Promise.all(chunks.map((chunk) => writeTeamChunk(chunk)));
+}
+
+async function writeTeamChunk(chunk: Record<string, unknown>[]): Promise<void> {
+  let requestItems = {
+    [tables.teams]: chunk.map((Item) => ({ PutRequest: { Item } })),
+  };
+
+  for (let attempt = 0; attempt < BATCH_WRITE_RETRIES; attempt++) {
+    const result = await getDocClient().send(
+      new BatchWriteCommand({ RequestItems: requestItems })
+    );
+    const unprocessed = result.UnprocessedItems;
+    if (!unprocessed || Object.keys(unprocessed).length === 0) return;
+    requestItems = unprocessed as typeof requestItems;
+  }
+
+  const dropped = requestItems[tables.teams]?.length ?? 0;
+  if (dropped > 0) {
+    console.error(`batchPutTeams: ${dropped} team write(s) still unprocessed after ${BATCH_WRITE_RETRIES} attempts`);
+  }
+}
+
 export async function getAllMatches() {
   const result = await getDocClient().send(
     new ScanCommand({ TableName: tables.matches })
@@ -191,12 +225,18 @@ export async function putConfig(configKey: string, value: string) {
  * KICKOFF, FULL_TIME, BRACKET_DRAWN) get an empty trailing segment, which is
  * still unique because only one such event of a given type exists per match.
  *
+ * The `eventId` is appended last so the sort key is globally unique per logical
+ * event even when several share the same ts/matchId/type/teamCode within one
+ * poll — most importantly two bookings for the SAME team in one refresh (same
+ * type + teamCode), which the teamCode segment alone cannot separate. Without it
+ * the second PutItem would overwrite the first and drop a card from the feed.
+ *
  * NOTE: the `sk` embeds `ts` (detection time), so re-detecting the same logical
  * event at a later poll APPENDS a new row rather than overwriting. The
  * deterministic `eventId` is the real idempotency key and is collapsed at read
  * time by `getRecentEvents` (newest wins). `detectEvents` only re-fires when a
- * match's stored score/status actually changes, so in practice this churn is
- * rare; the read-side dedupe keeps the feed correct regardless.
+ * match's stored score/status/actions actually change, so in practice this
+ * churn is rare; the read-side dedupe keeps the feed correct regardless.
  */
 export async function putEvent(event: FeedEvent) {
   await getDocClient().send(
@@ -204,7 +244,7 @@ export async function putEvent(event: FeedEvent) {
       TableName: tables.events,
       Item: {
         feedId: FEED_PARTITION,
-        sk: `${event.ts}#${event.matchId ?? ''}#${event.type}#${event.teamCode ?? ''}`,
+        sk: `${event.ts}#${event.matchId ?? ''}#${event.type}#${event.teamCode ?? ''}#${event.eventId ?? ''}`,
         ...event,
       },
     })

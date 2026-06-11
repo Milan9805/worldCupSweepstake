@@ -6,6 +6,7 @@ import {
   getAllMatches,
   putMatch,
   batchPutMatches,
+  batchPutTeams,
   getTree,
   putTreeSlot,
   getConfig,
@@ -186,6 +187,65 @@ describe('dynamodb module', () => {
     });
   });
 
+  describe('batchPutTeams', () => {
+    it('does nothing (no requests) for an empty list', async () => {
+      await batchPutTeams([]);
+      expect(mockSend).not.toHaveBeenCalled();
+    });
+
+    it('writes a single batch to the teams table', async () => {
+      mockSend.mockResolvedValue({});
+      const teams = Array.from({ length: 5 }, (_, i) => ({ teamCode: `T${i}` }));
+
+      await batchPutTeams(teams);
+
+      expect(mockSend).toHaveBeenCalledTimes(1);
+      const command = mockSend.mock.calls[0][0];
+      expect(command.type).toBe('BatchWrite');
+      expect(command.input.RequestItems[tables.teams]).toHaveLength(5);
+      expect(command.input.RequestItems[tables.teams][0]).toEqual({
+        PutRequest: { Item: { teamCode: 'T0' } },
+      });
+    });
+
+    it('splits more than 25 teams into multiple batch requests', async () => {
+      mockSend.mockResolvedValue({});
+      const teams = Array.from({ length: 30 }, (_, i) => ({ teamCode: `T${i}` }));
+
+      await batchPutTeams(teams);
+
+      expect(mockSend).toHaveBeenCalledTimes(2);
+    });
+
+    it('retries items DynamoDB returns as unprocessed', async () => {
+      const unprocessed = {
+        [tables.teams]: [{ PutRequest: { Item: { teamCode: 'ENG' } } }],
+      };
+      mockSend
+        .mockResolvedValueOnce({ UnprocessedItems: unprocessed })
+        .mockResolvedValueOnce({ UnprocessedItems: {} });
+
+      await batchPutTeams([{ teamCode: 'ENG' }]);
+
+      expect(mockSend).toHaveBeenCalledTimes(2);
+      expect(mockSend.mock.calls[1][0].input.RequestItems).toEqual(unprocessed);
+    });
+
+    it('logs an error (without throwing) when items stay unprocessed after all retries', async () => {
+      const unprocessed = {
+        [tables.teams]: [{ PutRequest: { Item: { teamCode: 'ENG' } } }],
+      };
+      mockSend.mockResolvedValue({ UnprocessedItems: unprocessed });
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+      await expect(batchPutTeams([{ teamCode: 'ENG' }])).resolves.toBeUndefined();
+
+      expect(mockSend).toHaveBeenCalledTimes(3);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('still unprocessed'));
+      errorSpy.mockRestore();
+    });
+  });
+
   describe('getTree', () => {
     it('returns items from scan', async () => {
       const tree = [{ round: 'FINAL', position: 1 }];
@@ -237,7 +297,7 @@ describe('dynamodb module', () => {
   });
 
   describe('putEvent', () => {
-    it('stores the event under the FEED partition with a ts#matchId#type#teamCode sort key', async () => {
+    it('stores the event under the FEED partition with a ts#matchId#type#teamCode#eventId sort key', async () => {
       mockSend.mockResolvedValue({});
       const event: FeedEvent = {
         eventId: 'm1#FULL_TIME',
@@ -254,8 +314,8 @@ describe('dynamodb module', () => {
       expect(command.input.TableName).toBe(tables.events);
       expect(command.input.Item).toMatchObject({
         feedId: 'FEED',
-        // No teamCode on this event, so the trailing segment is empty.
-        sk: '2026-06-14T20:00:00.000Z#m1#FULL_TIME#',
+        // No teamCode, so that segment is empty; the eventId is appended last.
+        sk: '2026-06-14T20:00:00.000Z#m1#FULL_TIME##m1#FULL_TIME',
         eventId: 'm1#FULL_TIME',
         type: 'FULL_TIME',
       });
@@ -285,8 +345,8 @@ describe('dynamodb module', () => {
 
       const homeSk = mockSend.mock.calls[0][0].input.Item.sk;
       const awaySk = mockSend.mock.calls[1][0].input.Item.sk;
-      expect(homeSk).toBe('2026-06-14T20:30:00.000Z#m1#GOAL#ENG');
-      expect(awaySk).toBe('2026-06-14T20:30:00.000Z#m1#GOAL#BRA');
+      expect(homeSk).toBe('2026-06-14T20:30:00.000Z#m1#GOAL#ENG#m1#GOAL#2-2');
+      expect(awaySk).toBe('2026-06-14T20:30:00.000Z#m1#GOAL#BRA#m1#GOAL#2-2');
       // Distinct sort keys mean the second PutItem cannot overwrite the first.
       expect(homeSk).not.toBe(awaySk);
     });
@@ -303,7 +363,36 @@ describe('dynamodb module', () => {
       await putEvent(event);
 
       const command = mockSend.mock.calls[0][0];
-      expect(command.input.Item.sk).toBe('2026-06-20T12:00:00.000Z##BRACKET_DRAWN#');
+      expect(command.input.Item.sk).toBe('2026-06-20T12:00:00.000Z##BRACKET_DRAWN##BRACKET_DRAWN');
+    });
+
+    it('appends the eventId so two same-team bookings in one poll get distinct keys', async () => {
+      mockSend.mockResolvedValue({});
+      const ts = '2026-06-14T21:00:00.000Z';
+      const firstYellow: FeedEvent = {
+        eventId: 'm1#YELLOW_CARD#ENG#Stones#34\'',
+        ts,
+        type: 'YELLOW_CARD',
+        teamCode: 'ENG',
+        matchId: 'm1',
+        payload: { player: 'Stones', minute: "34'" },
+      };
+      const secondYellow: FeedEvent = {
+        eventId: 'm1#YELLOW_CARD#ENG#Rice#36\'',
+        ts,
+        type: 'YELLOW_CARD',
+        teamCode: 'ENG',
+        matchId: 'm1',
+        payload: { player: 'Rice', minute: "36'" },
+      };
+
+      await putEvent(firstYellow);
+      await putEvent(secondYellow);
+
+      const skA = mockSend.mock.calls[0][0].input.Item.sk;
+      const skB = mockSend.mock.calls[1][0].input.Item.sk;
+      // Same ts/matchId/type/teamCode — only the appended eventId keeps them apart.
+      expect(skA).not.toBe(skB);
     });
   });
 

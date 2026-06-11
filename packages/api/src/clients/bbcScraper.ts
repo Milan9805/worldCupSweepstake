@@ -1,4 +1,4 @@
-import { Match, MatchStatus, teamNameToTla } from '@sweepstake/shared';
+import { Match, MatchAction, MatchActionType, MatchStatus, teamNameToTla } from '@sweepstake/shared';
 
 const BBC_URLS = [
   'https://www.bbc.co.uk/sport/football/world-cup/scores-fixtures/2026-06',
@@ -15,11 +15,29 @@ export interface ScrapedFixture {
   status: MatchStatus;
   datetime: string; // ISO 8601 UTC
   minute: string | null; // live clock label ("19'", "45+2'", "HT"); null unless LIVE
+  // Goals + bookings, both sides flattened (home actions first, then away).
+  // Always present; empty array when the event carries none.
+  actions: MatchAction[];
+}
+
+// A single inner action on a player entry: a goal, or a card of some colour.
+interface BbcInnerAction {
+  type?: string; // "Goal", "Red Card", "Yellow Card", "Yellow-Red Card", ...
+  timeLabel?: { value?: string }; // clock label, e.g. "49'"
+}
+
+// One player's actions in an event: BBC groups by player, with an outer
+// actionType ("goal" / "card" / "substitution" / ...) and an inner list.
+interface BbcPlayerActions {
+  playerUrn?: string;
+  playerName?: string;
+  actionType?: string;
+  actions?: BbcInnerAction[];
 }
 
 interface BbcEvent {
-  home?: { fullName?: string; score?: number | string | null };
-  away?: { fullName?: string; score?: number | string | null };
+  home?: { fullName?: string; score?: number | string | null; actions?: BbcPlayerActions[] };
+  away?: { fullName?: string; score?: number | string | null; actions?: BbcPlayerActions[] };
   startDateTime?: string;
   status?: string;
   statusComment?: { value?: string };
@@ -183,7 +201,54 @@ function eventToFixture(event: BbcEvent): ScrapedFixture | null {
     // The clock is only meaningful in play; carry it solely for LIVE so a
     // SCHEDULED/FINISHED row never surfaces a stale "90+5'".
     minute: status === 'LIVE' ? extractMinute(event) : null,
+    // Goals + bookings for the whole match — home side first, then away.
+    actions: [
+      ...extractActions(event.home?.actions, homeTla),
+      ...extractActions(event.away?.actions, awayTla),
+    ],
   };
+}
+
+/**
+ * Flattens one side's per-player action list into MatchAction[]. BBC nests
+ * actions as `[{ playerName, actionType, actions: [{ type, timeLabel }] }]`,
+ * grouping multiple events for the same player; we emit one MatchAction per
+ * inner action. `team` is the resolved TLA for whichever side these came from.
+ *
+ * Classification:
+ *   actionType "card" → RED_CARD if the inner type mentions "red" (covers the
+ *     "Yellow-Red Card" second-yellow sending-off), otherwise YELLOW_CARD.
+ *   actionType "goal" → GOAL.
+ *   anything else (substitution, ...) is skipped.
+ *
+ * Entries with no player name, or where the side TLA is unknown, are skipped.
+ */
+function extractActions(players: BbcPlayerActions[] | undefined, team: string): MatchAction[] {
+  if (!players || !team) return [];
+
+  const result: MatchAction[] = [];
+  for (const player of players) {
+    const name = player.playerName?.trim();
+    if (!name) continue;
+
+    for (const inner of player.actions ?? []) {
+      const type = classifyAction(player.actionType, inner.type);
+      if (!type) continue;
+      result.push({ team, player: name, type, minute: inner.timeLabel?.value ?? '' });
+    }
+  }
+  return result;
+}
+
+function classifyAction(
+  actionType: string | undefined,
+  innerType: string | undefined,
+): MatchActionType | null {
+  if (actionType === 'card') {
+    return /red/i.test(innerType ?? '') ? 'RED_CARD' : 'YELLOW_CARD';
+  }
+  if (actionType === 'goal') return 'GOAL';
+  return null;
 }
 
 /**
@@ -284,6 +349,7 @@ export function buildBbcPatches(
       awayScore: fixture.awayScore,
       status: fixture.status,
       minute: fixture.minute,
+      actions: fixture.actions,
     });
   }
 
