@@ -354,8 +354,13 @@ resource "aws_cloudwatch_metric_alarm" "lambda_invocations" {
   namespace           = "AWS/Lambda"
   period              = 3600
   statistic           = "Sum"
-  threshold           = 1000
-  alarm_description   = "Lambda invocations unusually high (potential abuse)"
+  # The frontend polls the read endpoints every 30s while a match is LIVE, so a
+  # popular fixture legitimately drives ~1k+ invocations/hour. 5000/hour (~40
+  # concurrent polling tabs) keeps this as a runaway-abuse backstop without
+  # firing on normal live-match traffic; real health signals are the separate
+  # Errors/Throttles/5xx alarms above.
+  threshold           = 5000
+  alarm_description   = "Lambda invocations unusually high (potential abuse / runaway)"
   alarm_actions       = [aws_sns_topic.alerts.arn]
 
   dimensions = {
