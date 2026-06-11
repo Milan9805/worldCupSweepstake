@@ -4,6 +4,7 @@ import { Match, Team, ProgressTone, TeamProgress } from '@sweepstake/shared';
 import { TeamMatchInfo } from '@/lib/teamMatches';
 import { formatMatchDate, formatMatchTime } from '@/lib/format';
 import Avatar from '@/components/Avatar';
+import LiveBadge from '@/components/LiveBadge';
 
 // Fallbacks for when the source omits a channel's colours.
 const DEFAULT_CHANNEL_BG = '#374151';
@@ -135,9 +136,7 @@ function MatchInfoFooter({
     <div className="mt-3 pt-3 border-t border-white/10 space-y-1.5 text-xs">
       {live ? (
         <div className="flex items-center justify-center gap-2 flex-wrap">
-          <span className="bg-red-600 text-white text-[10px] px-2 py-0.5 rounded animate-pulse shrink-0">
-            LIVE
-          </span>
+          <LiveBadge minute={live.minute} layout="inline" />
           <span className="text-white font-medium">
             {live.homeTeam} {live.homeScore} - {live.awayScore} {live.awayTeam}
           </span>

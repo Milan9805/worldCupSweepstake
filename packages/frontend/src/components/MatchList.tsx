@@ -3,6 +3,7 @@
 import { Match } from '@sweepstake/shared';
 import { formatMatchDate, formatMatchTime } from '@/lib/format';
 import Avatar from '@/components/Avatar';
+import LiveBadge from '@/components/LiveBadge';
 
 interface MatchListProps {
   matches: Match[];
@@ -18,18 +19,7 @@ export default function MatchList({ matches, teamOwners, teamFlags }: MatchListP
   const statusBadge = (match: Match) => {
     switch (match.status) {
       case 'LIVE':
-        return (
-          <span className="inline-flex flex-col items-end gap-0.5">
-            <span className="bg-red-600 text-white text-xs px-2 py-0.5 rounded animate-pulse">
-              LIVE
-            </span>
-            {match.minute && (
-              <span className="text-red-400 text-[11px] font-semibold tabular-nums">
-                {match.minute}
-              </span>
-            )}
-          </span>
-        );
+        return <LiveBadge minute={match.minute} layout="stacked" />;
       case 'FINISHED':
         return (
           <span className="bg-gray-600 text-white text-xs px-2 py-0.5 rounded">
