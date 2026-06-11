@@ -22,6 +22,15 @@ describe('useGroup', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockLocalStorage.clear();
+    // loadData now also kicks off a real scrape (POST /refresh) whenever the
+    // loaded matches are in an active window. Default it to a harmless resolve
+    // so existing tests that don't care about it stay green.
+    mockedApi.refreshScores.mockResolvedValue({
+      matches: [],
+      teams: [],
+      source: 'api',
+      refreshedAt: '2026-06-11T00:00:00Z',
+    } as never);
   });
 
   it('initializes with null group and empty teams and matches', () => {
@@ -206,6 +215,106 @@ describe('useGroup', () => {
 
     await act(async () => {
       await result.current.refreshScoresData();
+    });
+
+    expect(consoleSpy).toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
+
+  it('loadData triggers a scrape (POST /refresh) when a loaded match is live, and applies its result', async () => {
+    mockLocalStorage.getItem.mockReturnValue('test');
+    const groupData = { groupKey: 'test', groupName: 'Test', members: [] };
+    // GET returns a LIVE match but WITHOUT a minute (read-only feed lags).
+    const matchesData = [{ matchId: 'm1', status: 'LIVE' }];
+    mockedApi.getGroup.mockResolvedValue(groupData);
+    mockedApi.getTeams.mockResolvedValue([]);
+    mockedApi.getMatches.mockResolvedValue(matchesData);
+    // The scrape returns the same match WITH the live minute filled in.
+    const scraped = {
+      matches: [{ matchId: 'm1', status: 'LIVE', minute: 57 }],
+      teams: [{ teamCode: 'ENG' }],
+      source: 'bbc',
+      refreshedAt: '2026-06-11T00:00:00Z',
+    };
+    mockedApi.refreshScores.mockResolvedValue(scraped as never);
+
+    const { result } = renderHook(() => useGroup());
+
+    await act(async () => {
+      await result.current.loadData();
+    });
+
+    expect(mockedApi.refreshScores).toHaveBeenCalled();
+    // The fresher scraped matches/teams (with the minute) win over the GET.
+    expect(result.current.matches).toEqual(scraped.matches);
+    expect(result.current.teams).toEqual(scraped.teams);
+  });
+
+  it('loadData does NOT scrape when no match is in an active window', async () => {
+    mockLocalStorage.getItem.mockReturnValue('test');
+    const groupData = { groupKey: 'test', groupName: 'Test', members: [] };
+    // A finished match in the distant past — not live, not imminent.
+    const matchesData = [
+      { matchId: 'm1', status: 'FINISHED', datetime: '2020-01-01T00:00:00Z' },
+    ];
+    mockedApi.getGroup.mockResolvedValue(groupData);
+    mockedApi.getTeams.mockResolvedValue([]);
+    mockedApi.getMatches.mockResolvedValue(matchesData);
+
+    const { result } = renderHook(() => useGroup());
+
+    await act(async () => {
+      await result.current.loadData();
+    });
+
+    expect(mockedApi.refreshScores).not.toHaveBeenCalled();
+    expect(result.current.matches).toEqual(matchesData);
+  });
+
+  it('liveRefresh scrapes via POST /refresh and applies the returned matches and teams', async () => {
+    mockLocalStorage.getItem.mockReturnValue('test');
+    const scraped = {
+      matches: [{ matchId: 'm1', status: 'LIVE', minute: 12 }],
+      teams: [{ teamCode: 'GER' }],
+      source: 'bbc',
+      refreshedAt: '2026-06-11T00:00:00Z',
+    };
+    mockedApi.refreshScores.mockResolvedValue(scraped as never);
+
+    const { result } = renderHook(() => useGroup());
+
+    await act(async () => {
+      await result.current.liveRefresh();
+    });
+
+    expect(mockedApi.refreshScores).toHaveBeenCalled();
+    // It must NOT go through the read-only GET path.
+    expect(mockedApi.getMatches).not.toHaveBeenCalled();
+    expect(result.current.matches).toEqual(scraped.matches);
+    expect(result.current.teams).toEqual(scraped.teams);
+  });
+
+  it('liveRefresh does nothing when there is no group key', async () => {
+    mockLocalStorage.getItem.mockReturnValue(null);
+
+    const { result } = renderHook(() => useGroup());
+
+    await act(async () => {
+      await result.current.liveRefresh();
+    });
+
+    expect(mockedApi.refreshScores).not.toHaveBeenCalled();
+  });
+
+  it('liveRefresh logs and swallows scrape errors (keeps last good data)', async () => {
+    mockLocalStorage.getItem.mockReturnValue('test');
+    mockedApi.refreshScores.mockRejectedValue(new Error('scrape down'));
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const { result } = renderHook(() => useGroup());
+
+    await act(async () => {
+      await result.current.liveRefresh();
     });
 
     expect(consoleSpy).toHaveBeenCalled();

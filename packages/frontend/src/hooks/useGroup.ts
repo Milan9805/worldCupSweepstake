@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { getGroup, getTeams, getMatches } from '@/lib/api';
-import { Group, Team, Match, RefreshResponse } from '@sweepstake/shared';
+import { getGroup, getTeams, getMatches, refreshScores } from '@/lib/api';
+import { Group, Team, Match, RefreshResponse, hasActiveMatchWindow } from '@sweepstake/shared';
 import { usePollScores } from '@/hooks/usePollScores';
 import {
   GroupRegistry,
@@ -114,6 +114,23 @@ export function useGroup() {
     [registry, groupKey, persistRegistry]
   );
 
+  // Trigger a real server-side scrape (POST /refresh) and apply the fresh
+  // matches+teams it returns. Unlike the read-only refreshScoresData, this is
+  // what causes the live `minute` to be (re)computed server-side, so the client
+  // can show "57'" without waiting for a manual refresh. The server has a 20s
+  // cooldown that returns cache, so calling this on load and each poll is safe.
+  const liveRefresh = useCallback(async () => {
+    if (!groupKey) return;
+    try {
+      const result = await refreshScores();
+      setMatches(result.matches);
+      setTeams(result.teams);
+    } catch (err) {
+      // Scrape failures are non-fatal — keep showing the last good data.
+      console.error('Live refresh failed:', err);
+    }
+  }, [groupKey]);
+
   const loadData = useCallback(async () => {
     if (!groupKey) return;
     setLoading(true);
@@ -134,12 +151,18 @@ export function useGroup() {
         writeRegistry(next);
         return next;
       });
+      // If a match is live/imminent, the read-only GET above won't carry a fresh
+      // `minute` — that's only written when a scrape runs. Kick one off so the
+      // very first paint shows the live minute instead of needing a manual reload.
+      if (hasActiveMatchWindow(matchesData as Match[], Date.now())) {
+        await liveRefresh();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  }, [groupKey]);
+  }, [groupKey, liveRefresh]);
 
   // Lightweight background refresh: only the things that change during play
   // (scores + team stats), without the heavier group fetch or a loading flash.
@@ -178,8 +201,14 @@ export function useGroup() {
     setGroup(null);
   }, []);
 
-  // Auto-update scores in the background while a match is live (no manual refresh).
-  usePollScores(matches, refreshScoresData);
+  // Auto-update scores in the background while a match is live (no manual
+  // refresh). While a match is LIVE we scrape (POST) so the `minute` keeps
+  // ticking; otherwise the cheap read-only GET is enough. usePollScores keeps
+  // the refetch in a ref each render, so a per-render value is fine here.
+  usePollScores(
+    matches,
+    matches.some((m) => m.status === 'LIVE') ? liveRefresh : refreshScoresData
+  );
 
   const knownGroups = Object.entries(registry.groups).map(([key, value]) => ({
     groupKey: key,
@@ -204,6 +233,7 @@ export function useGroup() {
     loadData,
     logout,
     refreshScoresData,
+    liveRefresh,
     applyRefresh,
     // Multi-group registry surface.
     knownGroups,
