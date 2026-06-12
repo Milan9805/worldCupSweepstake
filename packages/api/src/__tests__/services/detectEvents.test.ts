@@ -374,6 +374,50 @@ describe('detectEvents', () => {
         .sort();
       expect(ids).toEqual(["m1#RED_CARD#BRA#Casemiro#61'", "m1#YELLOW_CARD#ENG#Stones#34'"]);
     });
+
+    it('anchors a card ts to kickoff + clock minute, not detection time', () => {
+      // Kickoff 18:00; a 34' booking happened ~34 real minutes in, so the feed
+      // should read "34 minutes after kickoff", not "just now" when scraped late.
+      const existing = makeMatch({ status: 'LIVE', homeScore: 0, awayScore: 0 });
+      const merged = makeMatch({
+        status: 'LIVE',
+        homeScore: 0,
+        awayScore: 0,
+        actions: [{ team: 'ENG', player: 'Stones', type: 'YELLOW_CARD', minute: "34'" }],
+      });
+
+      const card = detectEvents(existing, merged, NO_TEAMS).find((e) => e.type === 'YELLOW_CARD');
+      expect(card?.ts).toBe('2026-06-14T18:34:00.000Z');
+    });
+
+    it('adds the half-time break for second-half minutes', () => {
+      // 61' is in the second half: 61 clock mins + ~15 min interval = 76 real
+      // minutes after an 18:00 kickoff -> 19:16.
+      const existing = makeMatch({ status: 'LIVE', homeScore: 0, awayScore: 0 });
+      const merged = makeMatch({
+        status: 'LIVE',
+        homeScore: 0,
+        awayScore: 0,
+        actions: [{ team: 'BRA', player: 'Casemiro', type: 'RED_CARD', minute: "61'" }],
+      });
+
+      const card = detectEvents(existing, merged, NO_TEAMS).find((e) => e.type === 'RED_CARD');
+      expect(card?.ts).toBe('2026-06-14T19:16:00.000Z');
+    });
+
+    it('adds first-half stoppage without the half-time break', () => {
+      // "45'+1" is added time in the FIRST half: 46 real minutes in, no interval.
+      const existing = makeMatch({ status: 'LIVE', homeScore: 0, awayScore: 0 });
+      const merged = makeMatch({
+        status: 'LIVE',
+        homeScore: 0,
+        awayScore: 0,
+        actions: [{ team: 'ENG', player: 'Rice', type: 'YELLOW_CARD', minute: "45'+1" }],
+      });
+
+      const card = detectEvents(existing, merged, NO_TEAMS).find((e) => e.type === 'YELLOW_CARD');
+      expect(card?.ts).toBe('2026-06-14T18:46:00.000Z');
+    });
   });
 
   describe('GOAL scorer enrichment', () => {

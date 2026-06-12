@@ -109,12 +109,20 @@ export function detectEvents(
   // ===== CARDS — one event per new booking action =====
   // Bookings are surfaced from the per-player action list, not the score; a
   // card already present in `existing` (same key) must not re-emit.
+  //
+  // A card's `ts` is anchored to WHEN IT HAPPENED in the match (kickoff +
+  // clock minute), NOT the detection time `ts`. Cards were added to the scrape
+  // late and backfilled in a single poll, so detection-time stamping made every
+  // historical booking read "just now"; the clock minute is the real time. This
+  // is safe here (and not for goals) because a card emits exactly once — it
+  // never re-fires with a later scorer the way a goal does, so pushing its `ts`
+  // into the past can't trip the read-time newest-wins dedupe.
   for (const a of next) {
     if (a.type !== 'YELLOW_CARD' && a.type !== 'RED_CARD') continue;
     if (prevKeys.has(key(a))) continue;
     events.push({
       eventId: `${matchId}#${a.type}#${a.team}#${a.player}#${a.minute}`,
-      ts,
+      ts: actionTimestamp(merged.datetime, a.minute) ?? ts,
       type: a.type,
       teamCode: a.team,
       matchId,
@@ -222,4 +230,39 @@ export function detectEvents(
  */
 function isHalfTime(minute: string | null | undefined): boolean {
   return /^ht$|half[\s-]?time/i.test((minute ?? '').trim());
+}
+
+/**
+ * Approximate the real-world wall-clock time of an in-match action from the
+ * match kickoff and the BBC clock label, so the feed can show how long ago a
+ * booking actually happened rather than when our scraper first saw it. Returns
+ * an ISO string, or null when there's no usable kickoff/label (caller falls
+ * back to detection time).
+ *
+ * The model maps the clock onto elapsed real minutes: first-half minutes map
+ * straight through, second-half minutes (base >= 46) add a ~15-min half-time
+ * break, and stoppage ("45+2", "90'+3") is added on. Deliberately approximate —
+ * it ignores the exact break length and any extra-time interval — but far
+ * closer than stamping every card with the moment it was scraped.
+ */
+function actionTimestamp(
+  kickoff: string | null | undefined,
+  minuteLabel: string | null | undefined
+): string | null {
+  const kickoffMs = new Date(kickoff ?? '').getTime();
+  if (Number.isNaN(kickoffMs)) return null;
+
+  const label = (minuteLabel ?? '').trim();
+  const base = label.match(/\d+/);
+  if (!base) return null; // "HT" and other non-numeric labels: use detection time
+  const baseMin = parseInt(base[0], 10);
+
+  // Stoppage is the number following a "+", tolerant of an apostrophe between
+  // them ("45'+1", "45+2'", "90'+3").
+  const stoppage = label.match(/\+\s*'?\s*(\d+)/);
+  const stoppageMin = stoppage ? parseInt(stoppage[1], 10) : 0;
+
+  const breakMin = baseMin >= 46 ? 15 : 0;
+  const elapsedMs = (baseMin + stoppageMin + breakMin) * 60_000;
+  return new Date(kickoffMs + elapsedMs).toISOString();
 }
