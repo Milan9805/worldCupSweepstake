@@ -16,6 +16,7 @@
     "test:e2e": "npm run test:e2e --workspace=packages/frontend",
     "lint": "npm run lint --workspaces --if-present",
     "dev": "npm run dev --workspace=packages/frontend",
+    "deploy": "bash scripts/deploy.sh",
     "seed": "npx ts-node --project scripts/tsconfig.json scripts/seed.ts",
     "set-admin-secret": "npx ts-node --project scripts/tsconfig.json scripts/set-admin-secret.ts",
     "wait-for-dynamo": "until curl -s http://localhost:8000 > /dev/null 2>&1; do sleep 1; done",

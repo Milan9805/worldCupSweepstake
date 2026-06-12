@@ -5,9 +5,10 @@
 // first on purpose: the app is a Trusted Web Activity over the live site, so
 // fresh content/API responses must always win — the cache is just a fallback.
 //
-// Bump CACHE (v1 -> v2 ...) whenever this file or the shell list changes; the
-// activate handler purges any cache whose name isn't the current one.
-const CACHE = 'sweepstake-v1';
+// Bump CACHE (v2 -> v3 ...) whenever this file or the shell list changes; the
+// activate handler purges any cache whose name isn't the current one, so a stale
+// precached shell on a returning device is cleared the next time the SW updates.
+const CACHE = 'sweepstake-v2';
 const SHELL = [
   '/',
   '/index.html',
@@ -50,11 +51,16 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(request)
       .then((response) => {
-        const copy = response.clone();
-        caches
-          .open(CACHE)
-          .then((cache) => cache.put(request, copy))
-          .catch(() => {});
+        // Only cache successful responses. Caching a 404/5xx (e.g. a hashed
+        // asset that was pruned by a deploy) would otherwise be replayed as the
+        // offline fallback and serve a broken page.
+        if (response.ok) {
+          const copy = response.clone();
+          caches
+            .open(CACHE)
+            .then((cache) => cache.put(request, copy))
+            .catch(() => {});
+        }
         return response;
       })
       .catch(() =>

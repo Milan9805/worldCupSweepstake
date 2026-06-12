@@ -7,7 +7,7 @@ const swSource = fs.readFileSync(
   'utf8'
 );
 
-const CACHE = 'sweepstake-v1';
+const CACHE = 'sweepstake-v2';
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 const keyOf = (req) => (typeof req === 'string' ? req : req.url);
 
@@ -114,6 +114,27 @@ describe('service worker (sw.js)', () => {
     expect(fetchMock).toHaveBeenCalledWith(request);
     await flush(); // let the fire-and-forget cache write settle
     expect(stores.get(CACHE).get('/dashboard.html')).toEqual({ cloned: true });
+  });
+
+  it('does not cache a non-OK response (e.g. a pruned hashed asset)', async () => {
+    const notFound = { ok: false, status: 404, clone: () => ({ cloned: true }) };
+    const { listeners, stores, fetchMock } = setup({
+      fetchImpl: async () => notFound,
+    });
+    const request = { url: '/_next/static/chunks/old-hash.css', method: 'GET' };
+    const event = { request };
+    event.respondWith = (p) => {
+      event.response = p;
+    };
+
+    listeners.fetch(event);
+    const result = await event.response;
+
+    expect(result).toBe(notFound); // still returned to the page
+    expect(fetchMock).toHaveBeenCalledWith(request);
+    await flush();
+    // ...but never written to the cache, so it can't be replayed offline.
+    expect(stores.get(CACHE)?.has('/_next/static/chunks/old-hash.css')).toBeFalsy();
   });
 
   it('falls back to the cached request when the network fails', async () => {
