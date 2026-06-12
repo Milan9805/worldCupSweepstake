@@ -17,9 +17,13 @@ interface BbcPlayer {
   cards?: BbcCard[];
 }
 
-// One side's lineup. `code` is BBC's own team code ("SA" for South Africa) —
-// deliberately NOT used; we resolve the TLA from `fullName` instead.
+// One side's lineup. The team identity nests under `name` ({ fullName,
+// shortName, code }); we resolve the app TLA from the full name — never the
+// BBC `code` ("SA" for South Africa, "KOR" for South Korea), which differs from
+// ours. `fullName` is also read at the top level as a tolerant fallback in case
+// the upstream shape drifts.
 interface TeamLineup {
+  name?: { fullName?: string };
   fullName?: string;
   players?: { starters?: BbcPlayer[]; substitutes?: BbcPlayer[] };
 }
@@ -71,7 +75,7 @@ export function parseMatchPageCards(html: string): MatchAction[] {
 function extractTeamCards(team: TeamLineup | undefined): MatchAction[] {
   if (!team) return [];
 
-  const tla = teamNameToTla(team.fullName ?? '');
+  const tla = teamNameToTla(team.name?.fullName ?? team.fullName ?? '');
   if (!tla) return [];
 
   const players = [

@@ -77,6 +77,28 @@ describe('parseMatchPageCards', () => {
     expect(cards[0].team).not.toBe('SA');
   });
 
+  it('reads the real nested team shape (team.name.fullName), ignoring the BBC code', () => {
+    // Real BBC match pages nest the team identity under `name`; the TLA must
+    // come from name.fullName, never name.code ("KOR" for South Korea, "SA" for
+    // South Africa). This is the shape the live scraper actually receives.
+    const html = makeMatchHtml({
+      homeTeam: {
+        id: 't1',
+        urn: 'urn:bbc:sportsdata:football:team:south-korea',
+        name: { fullName: 'South Korea', shortName: 'South Korea', code: 'KOR' },
+        players: { starters: [player('Lee Gi-Hyuk', [card('Yellow Card', "90'+6")])], substitutes: [] },
+      },
+      awayTeam: {
+        name: { fullName: 'South Africa', shortName: 'South Africa', code: 'SA' },
+        players: { starters: [player('Y. Sithole', [card('Red Card', "49'")])], substitutes: [] },
+      },
+    });
+    expect(parseMatchPageCards(html)).toEqual([
+      { team: 'KOR', player: 'Lee Gi-Hyuk', type: 'YELLOW_CARD', minute: "90'+6" },
+      { team: 'RSA', player: 'Y. Sithole', type: 'RED_CARD', minute: "49'" },
+    ]);
+  });
+
   it('uses name.short as the player and timeLabel.value as the minute', () => {
     const html = makeMatchHtml({
       homeTeam: {
