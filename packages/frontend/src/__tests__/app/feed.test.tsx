@@ -128,6 +128,36 @@ describe('FeedPage', () => {
     expect(highlighted).toHaveLength(1);
   });
 
+  it("highlights events in the claimed person's match even when the other team is involved", async () => {
+    // Alice owns ENG. Both events belong to her ENG–GER match but are attributed
+    // to GER (a goal conceded, an opponent booking) — they must still highlight.
+    mockGetFeed.mockResolvedValue([
+      {
+        eventId: 'm1#GOAL#away#0',
+        ts: new Date().toISOString(),
+        type: 'GOAL',
+        teamCode: 'GER',
+        matchId: 'm1',
+        payload: { homeTeam: 'ENG', awayTeam: 'GER', homeScore: 0, awayScore: 1, scoringTeam: 'GER' },
+      },
+      {
+        eventId: "m1#YELLOW_CARD#GER#Kroos#40'",
+        ts: new Date().toISOString(),
+        type: 'YELLOW_CARD',
+        teamCode: 'GER',
+        matchId: 'm1',
+        payload: { teamCode: 'GER', player: 'Kroos', minute: "40'", homeTeam: 'ENG', awayTeam: 'GER' },
+      },
+    ]);
+
+    render(<FeedPage />);
+
+    const rows = await screen.findAllByTestId('feed-event');
+    expect(rows).toHaveLength(2);
+    const highlighted = rows.filter((r) => r.getAttribute('data-involves-claimed') === 'true');
+    expect(highlighted).toHaveLength(2);
+  });
+
   it('does not highlight events with no claimed-person involvement', async () => {
     mockGetFeed.mockResolvedValue([
       {

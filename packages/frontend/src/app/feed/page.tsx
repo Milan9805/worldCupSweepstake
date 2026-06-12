@@ -148,7 +148,7 @@ function FeedRow({ event, teamsByCode, ownersByTeam, claimedPerson, now }: FeedR
       data-involves-claimed={involvesClaimed ? 'true' : 'false'}
       className={`flex items-start gap-3 rounded-lg border p-4 ${
         involvesClaimed
-          ? 'border-gold/60 bg-gold/10'
+          ? 'border-sky-400/60 bg-sky-400/10'
           : 'border-white/10 bg-white/5'
       }`}
     >
@@ -272,22 +272,19 @@ function EventHeadline({
 }
 
 // The team codes an event involves, used for owner resolution + highlighting.
+// Match-scoped events (goals, cards, kickoff/HT/FT) involve BOTH sides — it's
+// your match whether your team scored or conceded, booked or got booked — so we
+// return both teams and highlight if the viewer owns either. ELIMINATION is
+// about a single team; BRACKET_DRAWN involves none.
 function eventTeamCodes(event: FeedEvent): string[] {
-  if (
-    event.type === 'GOAL' ||
-    event.type === 'ELIMINATION' ||
-    event.type === 'YELLOW_CARD' ||
-    event.type === 'RED_CARD'
-  ) {
+  if (event.type === 'ELIMINATION') {
     const code = (event.payload.teamCode as string) ?? event.teamCode;
     return code ? [code] : [];
   }
-  if (event.type === 'KICKOFF' || event.type === 'HALF_TIME' || event.type === 'FULL_TIME') {
-    const home = event.payload.homeTeam as string | undefined;
-    const away = event.payload.awayTeam as string | undefined;
-    return [home, away].filter((c): c is string => !!c);
-  }
-  return [];
+  if (event.type === 'BRACKET_DRAWN') return [];
+  const home = event.payload.homeTeam as string | undefined;
+  const away = event.payload.awayTeam as string | undefined;
+  return [home, away].filter((c): c is string => !!c);
 }
 
 // Distinct owners (by name) of the given team codes, preserving order.
