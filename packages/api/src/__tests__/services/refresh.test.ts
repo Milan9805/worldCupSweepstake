@@ -2,16 +2,19 @@ import { refreshData } from '../../services/refresh';
 import * as db from '../../db/dynamodb';
 import * as footballData from '../../clients/footballData';
 import * as bbcScraper from '../../clients/bbcScraper';
+import * as bbcMatchPage from '../../clients/bbcMatchPage';
 import * as tvScraper from '../../clients/footballTvScraper';
 
 jest.mock('../../db/dynamodb');
 jest.mock('../../clients/footballData');
 jest.mock('../../clients/bbcScraper');
+jest.mock('../../clients/bbcMatchPage');
 jest.mock('../../clients/footballTvScraper');
 
 const mockedDb = db as jest.Mocked<typeof db>;
 const mockedFootballData = footballData as jest.Mocked<typeof footballData>;
 const mockedBbc = bbcScraper as jest.Mocked<typeof bbcScraper>;
+const mockedMatchPage = bbcMatchPage as jest.Mocked<typeof bbcMatchPage>;
 const mockedTv = tvScraper as jest.Mocked<typeof tvScraper>;
 
 const NOW = 1700000000000;
@@ -29,6 +32,8 @@ describe('refreshData', () => {
     // runs at all when a match is in its active window.)
     mockedBbc.fetchBbcFixtures.mockResolvedValue([]);
     mockedBbc.buildBbcPatches.mockReturnValue([]);
+    // Default: the per-match card overlay finds no cards unless a test opts in.
+    mockedMatchPage.fetchMatchCards.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -539,6 +544,114 @@ describe('refreshData', () => {
       );
       // No card actions and no standings → MEX is unchanged → no team write.
       expect(mockedDb.batchPutTeams).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('per-match card overlay (yellow cards)', () => {
+    const liveMatch = {
+      matchId: 'm-mex-rsa',
+      homeTeam: 'MEX',
+      awayTeam: 'RSA',
+      homeScore: 1,
+      awayScore: 0,
+      status: 'LIVE',
+      stage: 'GROUP_STAGE',
+      group: 'A',
+      datetime: new Date(NOW).toISOString(),
+      venue: 'Estadio Azteca',
+    };
+    const mexTeam = {
+      teamCode: 'MEX',
+      name: 'Mexico',
+      flag: '🇲🇽',
+      fifaRanking: 12,
+      groupLetter: 'A',
+      eliminated: false,
+      eliminatedAt: null,
+      stats: {
+        played: 0, wins: 0, draws: 0, losses: 0,
+        goalsFor: 0, goalsAgainst: 0, goalDifference: 0, points: 0,
+        yellowCards: 0, redCards: 0, possession: null, xG: null,
+      },
+    };
+    const scrapedFixture = {
+      homeTeam: 'MEX', awayTeam: 'RSA', homeScore: 1, awayScore: 0,
+      status: 'LIVE' as const, datetime: liveMatch.datetime, minute: "23'",
+      actions: [], tipoTopicId: 'c0myn4dwvzkt',
+    };
+
+    beforeEach(() => {
+      mockedDb.getConfig.mockResolvedValue(undefined);
+      mockedFootballData.fetchMatches.mockResolvedValue([liveMatch] as never);
+      mockedDb.getAllMatches.mockResolvedValue([liveMatch]);
+      mockedDb.getAllTeams.mockResolvedValue([mexTeam]);
+      mockedBbc.fetchBbcFixtures.mockResolvedValue([scrapedFixture]);
+    });
+
+    it('fetches the match page for a live match and surfaces a yellow card on the feed + team stats', async () => {
+      mockedMatchPage.fetchMatchCards.mockResolvedValue([
+        { team: 'MEX', player: 'B. Gutiérrez', type: 'YELLOW_CARD', minute: "23'" },
+      ]);
+
+      await refreshData();
+
+      expect(mockedMatchPage.fetchMatchCards).toHaveBeenCalledWith('c0myn4dwvzkt');
+      // The yellow (absent from the fixtures feed) becomes a YELLOW_CARD event…
+      expect(mockedDb.putEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'YELLOW_CARD',
+          teamCode: 'MEX',
+          payload: expect.objectContaining({ player: 'B. Gutiérrez', minute: "23'" }),
+        }),
+      );
+      // …and bumps MEX's yellow-card count on the team row.
+      expect(mockedDb.batchPutTeams).toHaveBeenCalledWith([
+        expect.objectContaining({
+          teamCode: 'MEX',
+          stats: expect.objectContaining({ yellowCards: 1, redCards: 0 }),
+        }),
+      ]);
+    });
+
+    it('swallows a match-page fetch failure without breaking the refresh', async () => {
+      mockedMatchPage.fetchMatchCards.mockRejectedValue(new Error('match page 503'));
+
+      await expect(refreshData()).resolves.toBeDefined();
+
+      expect(console.warn).toHaveBeenCalledWith(
+        expect.stringContaining('BBC match-page fetch failed'),
+        expect.any(Error),
+      );
+      expect(mockedDb.putEvent).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'YELLOW_CARD' }),
+      );
+    });
+
+    it('dedupes a red card present in both the fixtures feed and the match page', async () => {
+      // Fixtures overlay supplies the red (emitting one RED_CARD event)…
+      mockedBbc.buildBbcPatches.mockReturnValue([
+        {
+          matchId: 'm-mex-rsa', homeScore: 1, awayScore: 0, status: 'LIVE', minute: "49'",
+          actions: [{ team: 'RSA', player: 'Y. Sithole', type: 'RED_CARD', minute: "49'" }],
+        },
+      ]);
+      // …and the match page reports the SAME red.
+      mockedMatchPage.fetchMatchCards.mockResolvedValue([
+        { team: 'RSA', player: 'Y. Sithole', type: 'RED_CARD', minute: "49'" },
+      ]);
+
+      await refreshData();
+
+      const redEvents = mockedDb.putEvent.mock.calls.filter((c) => c[0].type === 'RED_CARD');
+      expect(redEvents).toHaveLength(1);
+    });
+
+    it('does not fetch a match page when the fixture has no topic id', async () => {
+      mockedBbc.fetchBbcFixtures.mockResolvedValue([{ ...scrapedFixture, tipoTopicId: undefined }]);
+
+      await refreshData();
+
+      expect(mockedMatchPage.fetchMatchCards).not.toHaveBeenCalled();
     });
   });
 });

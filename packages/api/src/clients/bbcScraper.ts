@@ -18,6 +18,9 @@ export interface ScrapedFixture {
   // Goals + bookings, both sides flattened (home actions first, then away).
   // Always present; empty array when the event carries none.
   actions: MatchAction[];
+  // BBC per-match page id (from the fixture's onward-journey link), used to
+  // fetch the match page for the full card list. Absent on older snapshots.
+  tipoTopicId?: string;
 }
 
 // A single inner action on a player entry: a goal, or a card of some colour.
@@ -46,6 +49,10 @@ interface BbcEvent {
   homeScore?: number | string | null;
   awayScore?: number | string | null;
   score?: { home?: number | string | null; away?: number | string | null };
+  // Link to the per-match page, e.g. "/sport/football/live/c0myn4dwvzkt"; the
+  // trailing id (also exposed as tipoTopicId) keys the match-page scrape.
+  onwardJourneyLink?: string;
+  tipoTopicId?: string;
 }
 
 interface BbcSecondaryGroup {
@@ -147,7 +154,14 @@ export function parseBbcHtml(html: string): ScrapedFixture[] {
   return fixtures;
 }
 
-function extractInitialData(html: string): BbcInitialData | null {
+/**
+ * Decodes the `window.__INITIAL_DATA__` hydration blob BBC server-renders into
+ * its sport pages. Both the scores-fixtures page and the per-match page use it
+ * (with different inner shapes), so the type is a caller-supplied generic —
+ * `extractInitialData<MatchPageData>(html)` from the match-page scraper, or the
+ * default `BbcInitialData` here. Returns null when the blob is absent/malformed.
+ */
+export function extractInitialData<T = BbcInitialData>(html: string): T | null {
   const marker = 'window.__INITIAL_DATA__="';
   const start = html.indexOf(marker);
   if (start < 0) return null;
@@ -170,7 +184,7 @@ function extractInitialData(html: string): BbcInitialData | null {
   const raw = html.slice(valStart, i);
   try {
     const inner = JSON.parse(`"${raw}"`);
-    return JSON.parse(inner) as BbcInitialData;
+    return JSON.parse(inner) as T;
   } catch {
     return null;
   }
@@ -206,7 +220,20 @@ function eventToFixture(event: BbcEvent): ScrapedFixture | null {
       ...extractActions(event.home?.actions, homeTla),
       ...extractActions(event.away?.actions, awayTla),
     ],
+    tipoTopicId: extractTopicId(event),
   };
+}
+
+/**
+ * The per-match page id, used to fetch the match page for the full card list.
+ * Prefers the explicit `tipoTopicId`; falls back to the trailing id of the
+ * onward-journey link (`/sport/football/live/c0myn4dwvzkt` → `c0myn4dwvzkt`).
+ * Returns undefined when neither is present (e.g. the pre-tournament snapshot).
+ */
+function extractTopicId(event: BbcEvent): string | undefined {
+  if (event.tipoTopicId) return event.tipoTopicId;
+  const match = /\/live\/([a-z0-9]+)/i.exec(event.onwardJourneyLink ?? '');
+  return match ? match[1] : undefined;
 }
 
 /**

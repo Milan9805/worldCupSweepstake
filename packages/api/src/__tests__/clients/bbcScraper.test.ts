@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { parseBbcHtml, buildBbcPatches, fetchBbcFixtures } from '../../clients/bbcScraper';
+import { parseBbcHtml, buildBbcPatches, fetchBbcFixtures, extractInitialData } from '../../clients/bbcScraper';
 import { Match, MatchAction } from '@sweepstake/shared';
 
 const FIXTURE_PATH = path.resolve(__dirname, '../fixtures/bbc-sample.html');
@@ -57,6 +57,59 @@ describe('parseBbcHtml (real BBC snapshot)', () => {
       expect(f.homeTeam).toMatch(/^[A-Z]{3}$/);
       expect(f.awayTeam).toMatch(/^[A-Z]{3}$/);
     }
+  });
+
+  it('leaves tipoTopicId undefined for the pre-tournament snapshot (no match links yet)', () => {
+    for (const f of fixtures) {
+      expect(f.tipoTopicId).toBeUndefined();
+    }
+  });
+});
+
+describe('parseBbcHtml (per-match topic id)', () => {
+  function makeHtmlWith(event: Record<string, unknown>): string {
+    const data = {
+      data: { 'sport-data-scores-fixtures?x=1': { data: { eventGroups: [{ secondaryGroups: [{ events: [event] }] }] } } },
+    };
+    return `<html><body><script>window.__INITIAL_DATA__=${JSON.stringify(JSON.stringify(data))};</script></body></html>`;
+  }
+  const base = {
+    home: { fullName: 'Mexico' },
+    away: { fullName: 'South Africa' },
+    startDateTime: '2026-06-11T19:00:00Z',
+    status: 'MidEvent',
+    statusComment: { value: "19'" },
+  };
+
+  it('prefers the explicit tipoTopicId field', () => {
+    const [f] = parseBbcHtml(makeHtmlWith({ ...base, tipoTopicId: 'c0myn4dwvzkt' }));
+    expect(f.tipoTopicId).toBe('c0myn4dwvzkt');
+  });
+
+  it('falls back to the trailing id of the onward-journey link', () => {
+    const [f] = parseBbcHtml(makeHtmlWith({ ...base, onwardJourneyLink: '/sport/football/live/abc123xyz' }));
+    expect(f.tipoTopicId).toBe('abc123xyz');
+  });
+
+  it('is undefined when neither field is present', () => {
+    const [f] = parseBbcHtml(makeHtmlWith(base));
+    expect(f.tipoTopicId).toBeUndefined();
+  });
+});
+
+describe('extractInitialData', () => {
+  it('decodes the double-encoded hydration blob', () => {
+    const payload = { data: { foo: { data: { bar: 1 } } } };
+    const html = `<html><script>window.__INITIAL_DATA__=${JSON.stringify(JSON.stringify(payload))};</script></html>`;
+    expect(extractInitialData(html)).toEqual(payload);
+  });
+
+  it('returns null when the marker is absent', () => {
+    expect(extractInitialData('<html><body>nope</body></html>')).toBeNull();
+  });
+
+  it('returns null when the blob is malformed', () => {
+    expect(extractInitialData('<html><script>window.__INITIAL_DATA__="not-json";</script></html>')).toBeNull();
   });
 });
 

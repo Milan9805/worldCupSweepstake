@@ -1,5 +1,6 @@
 import { fetchMatches, fetchStandings } from '../clients/footballData';
-import { fetchBbcFixtures, buildBbcPatches } from '../clients/bbcScraper';
+import { fetchBbcFixtures, buildBbcPatches, ScrapedFixture } from '../clients/bbcScraper';
+import { fetchMatchCards } from '../clients/bbcMatchPage';
 import { fetchTvListings, buildChannelPatches } from '../clients/footballTvScraper';
 import { getAllMatches, getAllTeams, batchPutMatches, batchPutTeams, getConfig, putConfig, putEvent } from '../db/dynamodb';
 import {
@@ -23,6 +24,11 @@ import {
 } from './teamStats';
 
 const REFRESH_COOLDOWN_MS = 20_000;
+
+// Upper bound on per-match page fetches in one refresh. The group stage peaks at
+// ~4 simultaneous kickoffs; this is defensive headroom so a malformed feed can't
+// spawn dozens of requests.
+const MATCH_PAGE_FETCH_CAP = 8;
 
 /**
  * @param preloadedMatches the current matches, if the caller already scanned
@@ -73,6 +79,9 @@ export async function refreshData(preloadedMatches?: Match[]): Promise<RefreshRe
           onlyExisting: true,
         });
         if (livePatches.length > 0) source = 'bbc';
+        // The fixtures feed carries goals + red cards but NOT yellows; the per-
+        // match page has the full card list. Overlay it for in-play matches.
+        matches = await overlayMatchPageCards(matches, scraped, teamsById);
       } catch (liveError) {
         console.warn('BBC live overlay failed (keeping API data):', liveError);
       }
@@ -83,6 +92,7 @@ export async function refreshData(preloadedMatches?: Match[]): Promise<RefreshRe
       const scraped = await fetchBbcFixtures();
       const patches = buildBbcPatches(scraped, matches);
       matches = await mergeAndWrite(matches, patches, (p) => p.matchId, teamsById, { onlyExisting: true });
+      matches = await overlayMatchPageCards(matches, scraped, teamsById);
       source = 'bbc';
       refreshedAt = now;
       await putConfig('lastRefreshTime', String(now));
@@ -186,6 +196,85 @@ async function mergeAndWrite<U extends { matchId?: string }>(
   // a re-detected event overwrites its row rather than duplicating it.
   await Promise.all(events.map((e) => putEvent(e)));
   return Array.from(byId.values());
+}
+
+/**
+ * Overlay BBC per-match page cards onto in-play matches. The scores-fixtures
+ * feed carries goals + red cards but NEVER yellows; the per-match page has the
+ * full card list. For each LIVE match we pair it with the topic id from its
+ * scraped fixture, fetch its page, and merge the cards into `Match.actions` —
+ * which lights up the YELLOW_CARD/RED_CARD feed events (via detectEvents) and
+ * the per-team card counts (via teamStats) automatically. Best-effort and
+ * bounded: a per-match fetch failure is isolated and never blocks the refresh.
+ */
+async function overlayMatchPageCards(
+  matches: Match[],
+  scraped: ScrapedFixture[],
+  teamsById: Map<string, Team>,
+): Promise<Match[]> {
+  // Pair each in-play match with the topic id from its scraped fixture (same
+  // home+away+day correlation buildBbcPatches uses). Cards only happen in play,
+  // so we fetch pages for LIVE matches only.
+  const targets: { matchId: string; topicId: string }[] = [];
+  for (const fixture of scraped) {
+    if (!fixture.tipoTopicId) continue;
+    const match = matches.find(
+      (m) =>
+        m.status === 'LIVE' &&
+        m.homeTeam === fixture.homeTeam &&
+        m.awayTeam === fixture.awayTeam &&
+        sameDay(m.datetime, fixture.datetime),
+    );
+    if (match) targets.push({ matchId: match.matchId, topicId: fixture.tipoTopicId });
+  }
+  if (targets.length === 0) return matches;
+
+  const capped = targets.slice(0, MATCH_PAGE_FETCH_CAP);
+  const results = await Promise.allSettled(capped.map((t) => fetchMatchCards(t.topicId)));
+
+  const byId = indexById(matches);
+  const patches: Partial<Match>[] = [];
+  for (let i = 0; i < capped.length; i++) {
+    const result = results[i];
+    if (result.status === 'rejected') {
+      console.warn(`BBC match-page fetch failed for ${capped[i].matchId}:`, result.reason);
+      continue;
+    }
+    // An empty result means the page isn't showing cards yet (or shape drift);
+    // skip rather than wipe the cards we already have.
+    if (result.value.length === 0) continue;
+    const existing = byId.get(capped[i].matchId);
+    if (!existing) continue;
+    patches.push({
+      matchId: capped[i].matchId,
+      actions: mergeCardActions(existing.actions ?? [], result.value),
+    });
+  }
+  if (patches.length === 0) return matches;
+  return mergeAndWrite(matches, patches, (p) => p.matchId, teamsById, { onlyExisting: true });
+}
+
+/**
+ * Combine fixtures-feed actions with the per-match page's cards. The match page
+ * is authoritative for cards (full yellow + red list), so we keep only the
+ * fixtures-feed GOAL actions and take every card from the page — which also
+ * means a red present in both sources can never double up. De-duped by the
+ * shared team|type|player|minute key.
+ */
+function mergeCardActions(existing: MatchAction[], pageCards: MatchAction[]): MatchAction[] {
+  const seen = new Set<string>();
+  const merged: MatchAction[] = [];
+  for (const a of [...existing.filter((x) => x.type === 'GOAL'), ...pageCards]) {
+    const k = `${a.team}|${a.type}|${a.player}|${a.minute}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    merged.push(a);
+  }
+  return merged;
+}
+
+function sameDay(a: string, b: string): boolean {
+  return a.slice(0, 10) === b.slice(0, 10);
 }
 
 const STATUS_RANK: Record<MatchStatus, number> = { SCHEDULED: 0, LIVE: 1, FINISHED: 2 };
