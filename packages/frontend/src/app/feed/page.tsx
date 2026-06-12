@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import NavBar from '@/components/NavBar';
-import { useGroup } from '@/hooks/useGroup';
+import { useGroup } from '@/hooks/GroupContext';
 import { usePollScores } from '@/hooks/usePollScores';
 import { getFeed } from '@/lib/api';
+import { buildTeamsByCode } from '@/lib/owners';
 import { FeedEvent, FeedEventType, Person, Team } from '@sweepstake/shared';
 
 // Icon + human label per event type, used for the timeline row marker.
@@ -21,7 +22,7 @@ const EVENT_META: Record<FeedEventType, { icon: string; label: string }> = {
 };
 
 export default function FeedPage() {
-  const { groupKey, group, teams, matches, loadData, claimedPerson } = useGroup();
+  const { groupKey, group, teams, matches, claimedPerson } = useGroup();
   const [events, setEvents] = useState<FeedEvent[]>([]);
   const [loading, setLoading] = useState(true);
   // A 1-minute ticker so relative timestamps ("just now" → "1m ago") keep
@@ -55,11 +56,10 @@ export default function FeedPage() {
         return;
       }
     }
-    // Load the active group (drives owner resolution + the LIVE poll cadence)
-    // alongside the feed itself.
-    loadData();
+    // The group/teams/matches load is owned by the shared GroupProvider; only
+    // the feed itself is fetched here.
     loadFeed().finally(() => setLoading(false));
-  }, [groupKey, loadData, loadFeed]);
+  }, [groupKey, loadFeed, router]);
 
   // Reuse the adaptive poll: `matches` drives the cadence (30s while live, off
   // when idle, visibility-aware) and each tick re-fetches the feed.
@@ -74,9 +74,7 @@ export default function FeedPage() {
   }
 
   // Team code → team, for resolving flags/names from the event payload.
-  const teamsByCode: Record<string, Team> = Object.fromEntries(
-    teams.map((t) => [t.teamCode, t]),
-  );
+  const teamsByCode = buildTeamsByCode(teams);
 
   // Team code → the active group's member who owns it (a team belongs to at most
   // one member). Used to attach an owner name to each event.

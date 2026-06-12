@@ -3,33 +3,32 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import NavBar from '@/components/NavBar';
-import MatchBanner from '@/components/MatchBanner';
 import TeamCard from '@/components/TeamCard';
 import Leaderboard from '@/components/Leaderboard';
 import PersonClaim from '@/components/PersonClaim';
-import { useGroup } from '@/hooks/useGroup';
+import { useGroup } from '@/hooks/GroupContext';
 import { getTeamMatchInfo, compareTeamsByMatch } from '@/lib/teamMatches';
+import { buildTeamsByCode, buildOwnersByTeam } from '@/lib/owners';
 import { calculateLeaderboard, teamProgress, Team } from '@sweepstake/shared';
 
 export default function DashboardPage() {
-  const { groupKey, group, teams, matches, loading, loadData, applyRefresh, claimedPerson } =
-    useGroup();
+  const { groupKey, group, teams, matches, loading, claimedPerson } = useGroup();
   // Which member the dashboard is viewing. Defaults to the claimed identity (who
   // you logged in as) but can be switched freely to browse other people's teams.
   // Switching the view does NOT change your identity — that's set at login.
   const [selectedPerson, setSelectedPerson] = useState<string>('');
   const router = useRouter();
 
+  // Data loading is owned by the shared GroupProvider; this guard only bounces
+  // visitors with no group at all back to the login page.
   useEffect(() => {
     if (!groupKey && typeof window !== 'undefined') {
       const stored = localStorage.getItem('sweepstake_group_key');
       if (!stored) {
         router.push('/');
-        return;
       }
     }
-    loadData();
-  }, [groupKey]);
+  }, [groupKey, router]);
 
   // Seed the in-view selection from the claimed person (or the first member as a
   // fallback) once data is available, and reset it when switching groups.
@@ -81,21 +80,14 @@ export default function DashboardPage() {
 
   const leaderboard = calculateLeaderboard(group.members, teams);
 
-  const teamsByCode = Object.fromEntries(teams.map((t) => [t.teamCode, t]));
-
-  // Map each owned team code to the group member who owns it, so cards can show
-  // who an opponent belongs to. A team belongs to at most one member.
-  const ownersByTeam: Record<string, { name: string; imageUrl: string | null }> =
-    Object.fromEntries(
-      group.members.flatMap((m) =>
-        m.teams.map((code) => [code, { name: m.name, imageUrl: m.imageUrl }])
-      )
-    );
+  // Lookups for the team cards: code → team, and code → owning member (so cards
+  // can show who an opponent belongs to).
+  const teamsByCode = buildTeamsByCode(teams);
+  const ownersByTeam = buildOwnersByTeam(group.members);
 
   return (
     <div className="min-h-screen">
-      <NavBar groupName={group.groupName} onRefreshed={applyRefresh} />
-      <MatchBanner matches={matches} teamsByCode={teamsByCode} ownersByTeam={ownersByTeam} />
+      <NavBar groupName={group.groupName} />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           {/* Main content */}

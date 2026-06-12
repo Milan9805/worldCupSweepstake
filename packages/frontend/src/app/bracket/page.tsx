@@ -5,58 +5,39 @@ import { useRouter } from 'next/navigation';
 import NavBar from '@/components/NavBar';
 import TreeView from '@/components/BracketView';
 import MatchList from '@/components/MatchList';
-import { getTree, getGroup, getMatches } from '@/lib/api';
-import { usePollScores } from '@/hooks/usePollScores';
-import { TreeSlot, Group, Match } from '@sweepstake/shared';
+import { getTree } from '@/lib/api';
+import { useGroup } from '@/hooks/GroupContext';
+import { buildOwnersByTeam } from '@/lib/owners';
+import { TreeSlot } from '@sweepstake/shared';
 
 export default function TreePage() {
   const [slots, setSlots] = useState<TreeSlot[]>([]);
-  const [matches, setMatches] = useState<Match[]>([]);
-  const [group, setGroup] = useState<Group | null>(null);
   const [loading, setLoading] = useState(true);
+  const { group, matches } = useGroup();
   const router = useRouter();
 
+  // Group + matches come from the shared group context — this page only guards
+  // against visiting without a key and owns the bracket slots.
   useEffect(() => {
     const key = localStorage.getItem('sweepstake_group_key');
     if (!key) {
       router.push('/');
-      return;
     }
-    loadData(key);
   }, []);
 
-  async function loadData(key: string) {
-    try {
-      const [treeData, groupData, matchesData] = await Promise.all([
-        getTree(),
-        getGroup(key),
-        getMatches(),
-      ]);
-      setSlots(treeData as TreeSlot[]);
-      setGroup(groupData as Group);
-      setMatches(matchesData as Match[]);
-    } catch (err) {
-      console.error('Error loading tree:', err);
-    } finally {
-      setLoading(false);
-    }
-  }
+  // Fetch the bracket initially and refetch whenever the shared matches update
+  // (poll tick or manual refresh) — the server recomputes slots from results.
+  useEffect(() => {
+    let cancelled = false;
+    getTree()
+      .then((treeData) => { if (!cancelled) setSlots(treeData as TreeSlot[]); })
+      .catch((err) => console.error('Error loading tree:', err))
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [matches]);
 
-  // Auto-refresh knockout scores + bracket in the background while a match is live.
-  usePollScores(matches, () => {
-    const key = localStorage.getItem('sweepstake_group_key');
-    if (key) loadData(key);
-  });
-
-  // Build team owners map
-  const teamOwners: Record<string, { name: string; imageUrl: string | null }> = {};
-  if (group) {
-    group.members.forEach((member) => {
-      member.teams.forEach((teamCode) => {
-        teamOwners[teamCode] = { name: member.name, imageUrl: member.imageUrl };
-      });
-    });
-  }
+  // Team code → owning member, for the bracket slots and fixtures.
+  const teamOwners = buildOwnersByTeam(group?.members ?? []);
 
   // Filter knockout stage matches
   const knockoutMatches = matches
@@ -73,19 +54,7 @@ export default function TreePage() {
 
   return (
     <div className="min-h-screen">
-      <NavBar
-        groupName={group?.groupName}
-        onRefreshed={async (result) => {
-          setMatches(result.matches);
-          // The refresh recomputes the bracket server-side; re-fetch the slots
-          // so the bracket graphic reflects the latest results too.
-          try {
-            setSlots((await getTree()) as TreeSlot[]);
-          } catch (err) {
-            console.error('Error refreshing bracket:', err);
-          }
-        }}
-      />
+      <NavBar groupName={group?.groupName} />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <h1 className="text-2xl font-bold mb-6">Tournament Tree</h1>
 

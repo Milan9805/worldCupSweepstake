@@ -1,6 +1,6 @@
 'use client';
 
-import { useGroup } from '@/hooks/useGroup';
+import { useGroup } from '@/hooks/GroupContext';
 
 /**
  * Multi-sweepstake identity hook. A thin, identity-focused view over the

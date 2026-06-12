@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom';
 import React from 'react';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import BracketPage from '../../app/bracket/page';
 import * as api from '../../lib/api';
 
@@ -21,6 +21,18 @@ jest.mock('../../components/MatchList', () => {
   };
 });
 
+// Mutable context state — the page reads group/matches from the shared
+// GroupContext (which owns the score polling); only the slots come from the api.
+let mockGroup: Record<string, unknown> | null = null;
+let mockMatches: unknown[] = [];
+
+jest.mock('../../hooks/GroupContext', () => ({
+  useGroup: () => ({
+    group: mockGroup,
+    matches: mockMatches,
+  }),
+}));
+
 const mockedApi = api as jest.Mocked<typeof api>;
 const mockPush = jest.fn();
 
@@ -39,34 +51,31 @@ describe('BracketPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockLocalStorage.getItem.mockReturnValue('test-group');
-  });
-
-  afterEach(() => {
-    jest.useRealTimers();
+    mockGroup = { groupKey: 'test', groupName: 'Test', members: [{ name: 'Alice', imageUrl: null, teams: ['ENG'] }] };
+    mockMatches = [];
+    mockedApi.getTree.mockResolvedValue([]);
   });
 
   it('shows loading state initially', () => {
     mockedApi.getTree.mockReturnValue(new Promise(() => {}));
-    mockedApi.getGroup.mockReturnValue(new Promise(() => {}));
-    mockedApi.getMatches.mockReturnValue(new Promise(() => {}));
     render(<BracketPage />);
     expect(screen.getByText('Loading...')).toBeInTheDocument();
   });
 
-  it('redirects to home if no group key', () => {
+  it('redirects to home if no group key', async () => {
     mockLocalStorage.getItem.mockReturnValue(null);
     render(<BracketPage />);
     expect(mockPush).toHaveBeenCalledWith('/');
+    // Flush the in-flight getTree so its state updates land inside the test.
+    await waitFor(() => {
+      expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+    });
   });
 
   it('renders bracket view after loading', async () => {
     const slots = [{ round: 'FINAL', position: 1, team1: 'ENG', team2: 'BRA', score1: null, score2: null, winner: null, datetime: null }];
-    const group = { groupKey: 'test', groupName: 'Test', members: [{ name: 'Alice', imageUrl: null, teams: ['ENG'] }] };
-    const matches = [{ matchId: '1', homeTeam: 'ENG', awayTeam: 'BRA', homeScore: null, awayScore: null, status: 'SCHEDULED', stage: 'SEMI_FINAL', group: null, datetime: '2026-07-10T20:00:00Z', venue: 'Wembley' }];
-
     mockedApi.getTree.mockResolvedValue(slots);
-    mockedApi.getGroup.mockResolvedValue(group);
-    mockedApi.getMatches.mockResolvedValue(matches);
+    mockMatches = [{ matchId: '1', homeTeam: 'ENG', awayTeam: 'BRA', homeScore: null, awayScore: null, status: 'SCHEDULED', stage: 'SEMI_FINAL', group: null, datetime: '2026-07-10T20:00:00Z', venue: 'Wembley' }];
 
     render(<BracketPage />);
 
@@ -75,17 +84,13 @@ describe('BracketPage', () => {
     });
   });
 
-  it('renders knockout fixtures from matches endpoint', async () => {
+  it('renders knockout fixtures from the shared matches', async () => {
     const slots = [{ round: 'FINAL', position: 1, team1: 'ENG', team2: 'BRA', score1: null, score2: null, winner: null, datetime: null }];
-    const group = { groupKey: 'test', groupName: 'Test', members: [{ name: 'Alice', imageUrl: null, teams: ['ENG'] }] };
-    const matches = [
+    mockedApi.getTree.mockResolvedValue(slots);
+    mockMatches = [
       { matchId: '1', homeTeam: 'ENG', awayTeam: 'BRA', homeScore: null, awayScore: null, status: 'SCHEDULED', stage: 'ROUND_OF_16', group: null, datetime: '2026-07-01T18:00:00Z', venue: 'Stadium' },
       { matchId: '2', homeTeam: 'GER', awayTeam: 'FRA', homeScore: null, awayScore: null, status: 'SCHEDULED', stage: 'GROUP_STAGE', group: 'A', datetime: '2026-06-14T18:00:00Z', venue: 'Stadium' },
     ];
-
-    mockedApi.getTree.mockResolvedValue(slots);
-    mockedApi.getGroup.mockResolvedValue(group);
-    mockedApi.getMatches.mockResolvedValue(matches);
 
     render(<BracketPage />);
 
@@ -98,8 +103,6 @@ describe('BracketPage', () => {
   it('handles load error gracefully', async () => {
     const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
     mockedApi.getTree.mockRejectedValue(new Error('API error'));
-    mockedApi.getGroup.mockRejectedValue(new Error('API error'));
-    mockedApi.getMatches.mockRejectedValue(new Error('API error'));
 
     render(<BracketPage />);
 
@@ -109,19 +112,23 @@ describe('BracketPage', () => {
     consoleSpy.mockRestore();
   });
 
-  it('auto-refetches the bracket while a knockout match is live', async () => {
-    jest.useFakeTimers();
+  it('refetches the bracket when the shared matches update (poll tick or refresh)', async () => {
     const liveMatch = { matchId: '1', homeTeam: 'ENG', awayTeam: 'BRA', homeScore: 0, awayScore: 0, status: 'LIVE', stage: 'SEMI_FINAL', group: null, datetime: '2026-07-10T20:00:00Z', venue: 'Wembley' };
-    mockedApi.getTree.mockResolvedValue([]);
-    mockedApi.getGroup.mockResolvedValue({ groupKey: 'test', groupName: 'T', members: [] });
-    mockedApi.getMatches.mockResolvedValue([liveMatch]);
+    mockMatches = [liveMatch];
 
-    render(<BracketPage />);
-    await act(async () => {}); // flush the initial load
+    const { rerender } = render(<BracketPage />);
+    await waitFor(() => {
+      expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+    });
+    expect(mockedApi.getTree).toHaveBeenCalledTimes(1);
 
-    mockedApi.getMatches.mockClear();
-    await act(async () => { jest.advanceTimersByTime(30_000); });
+    // The context replaces the matches array on every poll tick / refresh —
+    // the page must refetch the server-recomputed slots in response.
+    mockMatches = [{ ...liveMatch, homeScore: 1 }];
+    rerender(<BracketPage />);
 
-    expect(mockedApi.getMatches).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(mockedApi.getTree).toHaveBeenCalledTimes(2);
+    });
   });
 });

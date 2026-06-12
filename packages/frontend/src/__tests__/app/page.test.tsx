@@ -22,7 +22,7 @@ const mockGroupState: {
   claimedPerson: null,
 };
 
-jest.mock('../../hooks/useGroup', () => ({
+jest.mock('../../hooks/GroupContext', () => ({
   useGroup: () => ({
     addGroup: mockAddGroup,
     login: mockAddGroup,

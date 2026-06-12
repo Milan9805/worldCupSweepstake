@@ -4,23 +4,23 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import NavBar from '@/components/NavBar';
 import Avatar from '@/components/Avatar';
-import { useGroup } from '@/hooks/useGroup';
+import { useGroup } from '@/hooks/GroupContext';
 import { computeHonours, HonourPrize, HonourRow, Person } from '@sweepstake/shared';
 
 export default function HonoursPage() {
-  const { groupKey, group, teams, loading, loadData, applyRefresh, claimedPerson } = useGroup();
+  const { groupKey, group, teams, loading, claimedPerson } = useGroup();
   const router = useRouter();
 
+  // Data loading is owned by the shared GroupProvider; this guard only bounces
+  // visitors with no group at all back to the login page.
   useEffect(() => {
     if (!groupKey && typeof window !== 'undefined') {
       const stored = localStorage.getItem('sweepstake_group_key');
       if (!stored) {
         router.push('/');
-        return;
       }
     }
-    loadData();
-  }, [groupKey, loadData, router]);
+  }, [groupKey, router]);
 
   if (loading && !group) {
     return (
@@ -44,7 +44,7 @@ export default function HonoursPage() {
 
   return (
     <div className="min-h-screen">
-      <NavBar groupName={group.groupName} onRefreshed={applyRefresh} />
+      <NavBar groupName={group.groupName} />
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <h1 className="text-2xl font-bold mb-2">🏅 Honours Board</h1>
         <p className="text-sm text-green-200 mb-6">

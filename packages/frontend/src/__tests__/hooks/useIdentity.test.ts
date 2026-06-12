@@ -1,11 +1,12 @@
 import { renderHook, act } from '@testing-library/react';
 import { useIdentity, useGroups } from '../../hooks/useIdentity';
-import { useGroup } from '../../hooks/useGroup';
+import { useGroup } from '../../hooks/GroupContext';
 
-// useIdentity is a thin, identity-focused projection over useGroup. Mock the
-// underlying hook so these tests pin down exactly which fields/actions are
-// re-exposed, independent of useGroup's own (separately tested) behaviour.
-jest.mock('../../hooks/useGroup');
+// useIdentity is a thin, identity-focused projection over the shared useGroup
+// context. Mock the context hook so these tests pin down exactly which
+// fields/actions are re-exposed, independent of the provider's own
+// (separately tested) behaviour.
+jest.mock('../../hooks/GroupContext');
 
 const mockedUseGroup = useGroup as jest.MockedFunction<typeof useGroup>;
 

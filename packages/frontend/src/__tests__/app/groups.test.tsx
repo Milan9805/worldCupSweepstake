@@ -1,10 +1,26 @@
 import '@testing-library/jest-dom';
 import React from 'react';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import GroupsPage from '../../app/groups/page';
-import * as api from '../../lib/api';
 
-jest.mock('../../lib/api');
+const mockPush = jest.fn();
+
+// Mutable context state — the page reads group/teams/matches from the shared
+// GroupContext (which also owns the score polling), not from the api directly.
+let mockGroup: Record<string, unknown> | null = null;
+let mockTeams: unknown[] = [];
+let mockMatches: unknown[] = [];
+let mockLoading = false;
+
+jest.mock('../../hooks/GroupContext', () => ({
+  useGroup: () => ({
+    group: mockGroup,
+    teams: mockTeams,
+    matches: mockMatches,
+    loading: mockLoading,
+  }),
+}));
+
 jest.mock('../../components/NavBar', () => {
   return function MockNavBar({ groupName }: { groupName?: string }) {
     return <div data-testid="navbar">{groupName}</div>;
@@ -15,9 +31,6 @@ jest.mock('../../components/MatchList', () => {
     return <div data-testid="match-list">{matches.length} matches</div>;
   };
 });
-
-const mockedApi = api as jest.Mocked<typeof api>;
-const mockPush = jest.fn();
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush }),
@@ -30,23 +43,38 @@ const mockLocalStorage = {
 };
 Object.defineProperty(window, 'localStorage', { value: mockLocalStorage });
 
+const seedTeams = [
+  { teamCode: 'ENG', name: 'England', groupLetter: 'A', fifaRanking: 4, flag: '🏴', eliminated: false, eliminatedAt: null, stats: { played: 3, wins: 2, draws: 1, losses: 0, goalsFor: 5, goalsAgainst: 1, goalDifference: 4, points: 7, yellowCards: 0, redCards: 0, possession: 60, xG: 4 } },
+  { teamCode: 'GER', name: 'Germany', groupLetter: 'A', fifaRanking: 15, flag: '🇩🇪', eliminated: false, eliminatedAt: null, stats: { played: 3, wins: 1, draws: 1, losses: 1, goalsFor: 3, goalsAgainst: 3, goalDifference: 0, points: 4, yellowCards: 2, redCards: 0, possession: 55, xG: 3 } },
+];
+const seedMatches = [
+  { matchId: '1', homeTeam: 'ENG', awayTeam: 'GER', homeScore: 2, awayScore: 1, status: 'FINISHED', stage: 'GROUP_STAGE', group: 'A', datetime: '2026-06-14T18:00:00Z', venue: 'MetLife' },
+];
+const seedGroup = { groupKey: 'test', groupName: 'Test', members: [{ name: 'Alice', imageUrl: null, teams: ['ENG'] }] };
+
 describe('GroupsPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockLocalStorage.getItem.mockReturnValue('test-group');
+    mockGroup = null;
+    mockTeams = [];
+    mockMatches = [];
+    mockLoading = false;
   });
 
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  it('shows loading state initially', () => {
-    mockedApi.getMatches.mockReturnValue(new Promise(() => {}));
-    mockedApi.getTeams.mockReturnValue(new Promise(() => {}));
-    mockedApi.getGroup.mockReturnValue(new Promise(() => {}));
-
+  it('shows loading state while the context loads with no teams yet', () => {
+    mockLoading = true;
     render(<GroupsPage />);
     expect(screen.getByText('Loading...')).toBeInTheDocument();
+  });
+
+  it('does not flash the loading screen when teams are already populated', () => {
+    mockLoading = true;
+    mockTeams = seedTeams;
+    mockGroup = seedGroup;
+    render(<GroupsPage />);
+    expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+    expect(screen.getByText('Group Stages')).toBeInTheDocument();
   });
 
   it('redirects to home if no group key', () => {
@@ -55,40 +83,29 @@ describe('GroupsPage', () => {
     expect(mockPush).toHaveBeenCalledWith('/');
   });
 
-  it('renders group standings after loading', async () => {
-    const teams = [
-      { teamCode: 'ENG', name: 'England', groupLetter: 'A', fifaRanking: 4, flag: '🏴', eliminated: false, eliminatedAt: null, stats: { played: 3, wins: 2, draws: 1, losses: 0, goalsFor: 5, goalsAgainst: 1, goalDifference: 4, points: 7, yellowCards: 0, redCards: 0, possession: 60, xG: 4 } },
-      { teamCode: 'GER', name: 'Germany', groupLetter: 'A', fifaRanking: 15, flag: '🇩🇪', eliminated: false, eliminatedAt: null, stats: { played: 3, wins: 1, draws: 1, losses: 1, goalsFor: 3, goalsAgainst: 3, goalDifference: 0, points: 4, yellowCards: 2, redCards: 0, possession: 55, xG: 3 } },
-    ];
-    const matches = [
-      { matchId: '1', homeTeam: 'ENG', awayTeam: 'GER', homeScore: 2, awayScore: 1, status: 'FINISHED', stage: 'GROUP_STAGE', group: 'A', datetime: '2026-06-14T18:00:00Z', venue: 'MetLife' },
-    ];
-    const group = { groupKey: 'test', groupName: 'Test', members: [{ name: 'Alice', imageUrl: null, teams: ['ENG'] }] };
-
-    mockedApi.getMatches.mockResolvedValue(matches);
-    mockedApi.getTeams.mockResolvedValue(teams);
-    mockedApi.getGroup.mockResolvedValue(group);
+  it('renders group standings with owners and fixtures from the shared context', () => {
+    mockTeams = seedTeams;
+    mockMatches = seedMatches;
+    mockGroup = seedGroup;
 
     render(<GroupsPage />);
 
-    await waitFor(() => {
-      expect(screen.getByText('Group Stages')).toBeInTheDocument();
-    });
+    expect(screen.getByText('Group Stages')).toBeInTheDocument();
+    expect(screen.getByText('England')).toBeInTheDocument();
+    expect(screen.getByText('(Alice)')).toBeInTheDocument(); // owner next to their team
+    expect(screen.getByText('1 matches')).toBeInTheDocument(); // group A fixture
   });
 
-  it('auto-refetches standings while a match is live', async () => {
-    jest.useFakeTimers();
-    const liveMatch = { matchId: '1', homeTeam: 'ENG', awayTeam: 'GER', homeScore: 1, awayScore: 0, status: 'LIVE', stage: 'GROUP_STAGE', group: 'A', datetime: '2026-06-14T18:00:00Z', venue: 'X' };
-    mockedApi.getMatches.mockResolvedValue([liveMatch]);
-    mockedApi.getTeams.mockResolvedValue([]);
-    mockedApi.getGroup.mockResolvedValue({ groupKey: 'test', groupName: 'T', members: [] });
+  it('reflects shared matches updates (poll tick or manual refresh)', () => {
+    mockTeams = seedTeams;
+    mockGroup = seedGroup;
 
-    render(<GroupsPage />);
-    await act(async () => {}); // flush the initial load
+    const { rerender } = render(<GroupsPage />);
+    expect(screen.getByText('0 matches')).toBeInTheDocument();
 
-    mockedApi.getMatches.mockClear();
-    await act(async () => { jest.advanceTimersByTime(30_000); });
-
-    expect(mockedApi.getMatches).toHaveBeenCalled();
+    // The context replaces the matches array on every poll tick / refresh.
+    mockMatches = seedMatches;
+    rerender(<GroupsPage />);
+    expect(screen.getByText('1 matches')).toBeInTheDocument();
   });
 });

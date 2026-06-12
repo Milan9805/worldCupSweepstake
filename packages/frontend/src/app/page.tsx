@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useGroup } from '@/hooks/useGroup';
+import { useGroup } from '@/hooks/GroupContext';
 
 export default function HomePage() {
   const [key, setKey] = useState('');

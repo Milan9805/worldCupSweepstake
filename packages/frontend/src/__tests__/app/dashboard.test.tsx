@@ -4,7 +4,6 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import DashboardPage from '../../app/dashboard/page';
 
 const mockPush = jest.fn();
-const mockLoadData = jest.fn();
 
 let mockGroupKey: string | null = 'test-group';
 let mockGroup: Record<string, unknown> | null = null;
@@ -15,14 +14,13 @@ let mockClaimedPerson: string | null = null;
 
 const mockClaimPerson = jest.fn();
 
-jest.mock('../../hooks/useGroup', () => ({
+jest.mock('../../hooks/GroupContext', () => ({
   useGroup: () => ({
     groupKey: mockGroupKey,
     group: mockGroup,
     teams: mockTeams,
     matches: mockMatches,
     loading: mockLoading,
-    loadData: mockLoadData,
     claimedPerson: mockClaimedPerson,
     claimPerson: mockClaimPerson,
   }),
@@ -126,11 +124,6 @@ describe('DashboardPage', () => {
     mockLocalStorage.getItem.mockReturnValue(null);
     render(<DashboardPage />);
     expect(mockPush).toHaveBeenCalledWith('/');
-  });
-
-  it('calls loadData on mount', () => {
-    render(<DashboardPage />);
-    expect(mockLoadData).toHaveBeenCalled();
   });
 
   it('shows team cards for selected person', () => {

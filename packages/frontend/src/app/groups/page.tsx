@@ -4,9 +4,9 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import NavBar from '@/components/NavBar';
 import MatchList from '@/components/MatchList';
-import { getMatches, getTeams, getGroup } from '@/lib/api';
-import { usePollScores } from '@/hooks/usePollScores';
-import { Match, Team, Group, GroupZone, groupZones } from '@sweepstake/shared';
+import { useGroup } from '@/hooks/GroupContext';
+import { buildOwnersByTeam } from '@/lib/owners';
+import { GroupZone, groupZones } from '@sweepstake/shared';
 
 // Left accent bar + subtle fill per qualification zone. Bright emerald/amber
 // reads clearly against the dark-green app background; a confirmed (clinched)
@@ -19,44 +19,18 @@ const ZONE_CLASSES: Record<GroupZone, string> = {
 };
 
 export default function GroupsPage() {
-  const [matches, setMatches] = useState<Match[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [group, setGroup] = useState<Group | null>(null);
+  const { group, teams, matches, loading } = useGroup();
   const [selectedGroup, setSelectedGroup] = useState<string>('A');
-  const [loading, setLoading] = useState(true);
   const router = useRouter();
 
+  // Data comes from the shared group context (which also keeps it fresh while
+  // matches are live) — this page only guards against visiting without a key.
   useEffect(() => {
     const key = localStorage.getItem('sweepstake_group_key');
     if (!key) {
       router.push('/');
-      return;
     }
-    loadData(key);
   }, []);
-
-  async function loadData(key: string) {
-    try {
-      const [matchesData, teamsData, groupData] = await Promise.all([
-        getMatches(),
-        getTeams(),
-        getGroup(key),
-      ]);
-      setMatches(matchesData as Match[]);
-      setTeams(teamsData as Team[]);
-      setGroup(groupData as Group);
-    } catch (err) {
-      console.error('Error loading data:', err);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // Auto-refresh standings + scores in the background while a match is live.
-  usePollScores(matches, () => {
-    const key = localStorage.getItem('sweepstake_group_key');
-    if (key) loadData(key);
-  });
 
   const groupLetters = [...new Set(teams.map((t) => t.groupLetter))].sort();
   const groupTeams = teams
@@ -70,22 +44,17 @@ export default function GroupsPage() {
     .filter((m) => m.group === selectedGroup)
     .sort((a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime());
 
-  // Build team owners map
-  const teamOwners: Record<string, { name: string; imageUrl: string | null }> = {};
-  if (group) {
-    group.members.forEach((member) => {
-      member.teams.forEach((teamCode) => {
-        teamOwners[teamCode] = { name: member.name, imageUrl: member.imageUrl };
-      });
-    });
-  }
+  // Team code → owning member, for the standings and fixtures.
+  const teamOwners = buildOwnersByTeam(group?.members ?? []);
 
   // Team code → flag, so fixtures can show flags alongside the codes.
   const teamFlags: Record<string, string> = Object.fromEntries(
     teams.map((t) => [t.teamCode, t.flag]),
   );
 
-  if (loading) {
+  // Only show the full-screen loader on a cold start — when the shared context
+  // is already populated, a background reload shouldn't flash it.
+  if (loading && teams.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-green-200">Loading...</div>
@@ -95,13 +64,7 @@ export default function GroupsPage() {
 
   return (
     <div className="min-h-screen">
-      <NavBar
-        groupName={group?.groupName}
-        onRefreshed={(result) => {
-          setMatches(result.matches);
-          setTeams(result.teams);
-        }}
-      />
+      <NavBar groupName={group?.groupName} />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <h1 className="text-2xl font-bold mb-6">Group Stages</h1>
 

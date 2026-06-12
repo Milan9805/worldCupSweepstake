@@ -2,14 +2,15 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { RefreshResponse } from '@sweepstake/shared';
 import { useRefresh } from '@/hooks/useRefresh';
 import GroupSwitcher from '@/components/GroupSwitcher';
 import { useIdentity } from '@/hooks/useIdentity';
+import { useGroup } from '@/hooks/GroupContext';
+import MatchBanner from '@/components/MatchBanner';
+import { buildTeamsByCode, buildOwnersByTeam } from '@/lib/owners';
 
 interface NavBarProps {
   groupName?: string;
-  onRefreshed?: (result: RefreshResponse) => void;
 }
 
 const NAV_LINKS = [
@@ -21,12 +22,16 @@ const NAV_LINKS = [
   { href: '/admin', label: 'Admin' },
 ];
 
-export default function NavBar({ groupName, onRefreshed }: NavBarProps) {
-  const { refresh, isRefreshing, source } = useRefresh(onRefreshed);
+export default function NavBar({ groupName }: NavBarProps) {
+  // Shared group state from the provider: a manual refresh is applied straight
+  // back into it, so every page (and the banner below) updates together.
+  const { group, teams, matches, applyRefresh } = useGroup();
+  const { refresh, isRefreshing, source } = useRefresh(applyRefresh);
   const { groups, activeGroupKey } = useIdentity();
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
+    <>
     <nav className="bg-white/95 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-50 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
@@ -129,5 +134,14 @@ export default function NavBar({ groupName, onRefreshed }: NavBarProps) {
         )}
       </div>
     </nav>
+    {/* Live/next-match strip on every page with a nav. Deliberately outside the
+        sticky <nav> so it scrolls away with the page; renders null when nothing
+        is live or upcoming, keeping pre-auth pages clean. */}
+    <MatchBanner
+      matches={matches}
+      teamsByCode={buildTeamsByCode(teams)}
+      ownersByTeam={buildOwnersByTeam(group?.members ?? [])}
+    />
+    </>
   );
 }

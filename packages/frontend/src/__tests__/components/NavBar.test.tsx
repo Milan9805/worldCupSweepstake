@@ -2,13 +2,29 @@ import '@testing-library/jest-dom';
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import NavBar from '../../components/NavBar';
+import { Group, Match, RefreshResponse, Team } from '@sweepstake/shared';
 
-// Mock the useRefresh hook
+// Mock the useRefresh hook, capturing the callback NavBar wires into it so we
+// can assert the manual refresh feeds the shared group state.
 jest.mock('../../hooks/useRefresh', () => ({
-  useRefresh: () => ({
-    refresh: mockRefresh,
-    isRefreshing: mockIsRefreshing,
-    source: mockSource,
+  useRefresh: (onRefreshed?: (result: RefreshResponse) => void) => {
+    mockOnRefreshed = onRefreshed;
+    return {
+      refresh: mockRefresh,
+      isRefreshing: mockIsRefreshing,
+      source: mockSource,
+    };
+  },
+}));
+
+// Mock the shared group context (group/teams/matches drive the banner;
+// applyRefresh is what the refresh button writes back into).
+jest.mock('../../hooks/GroupContext', () => ({
+  useGroup: () => ({
+    group: mockGroup,
+    teams: mockTeams,
+    matches: mockMatches,
+    applyRefresh: mockApplyRefresh,
   }),
 }));
 
@@ -34,14 +50,40 @@ jest.mock('next/link', () => {
 let mockRefresh: jest.Mock;
 let mockIsRefreshing: boolean;
 let mockSource: string | null;
+let mockOnRefreshed: ((result: RefreshResponse) => void) | undefined;
+let mockGroup: Group | null;
+let mockTeams: Team[];
+let mockMatches: Match[];
+let mockApplyRefresh: jest.Mock;
 let mockGroups: Array<{ groupKey: string; groupName: string; person: string | null }>;
 let mockActiveGroupKey: string | null;
+
+const makeMatch = (overrides: Partial<Match> = {}): Match => ({
+  matchId: 'm1',
+  homeTeam: 'GER',
+  awayTeam: 'FRA',
+  homeScore: null,
+  awayScore: null,
+  status: 'SCHEDULED',
+  stage: 'GROUP_STAGE',
+  group: 'E',
+  datetime: new Date(Date.now() + 2 * 3_600_000).toISOString(),
+  venue: 'Stadium',
+  channels: [],
+  minute: null,
+  ...overrides,
+});
 
 describe('NavBar', () => {
   beforeEach(() => {
     mockRefresh = jest.fn();
     mockIsRefreshing = false;
     mockSource = null;
+    mockOnRefreshed = undefined;
+    mockGroup = null;
+    mockTeams = [];
+    mockMatches = [];
+    mockApplyRefresh = jest.fn();
     mockGroups = [];
     mockActiveGroupKey = null;
   });
@@ -76,6 +118,13 @@ describe('NavBar', () => {
     const button = screen.getByRole('button', { name: /Refresh Scores/i });
     fireEvent.click(button);
     expect(mockRefresh).toHaveBeenCalled();
+  });
+
+  it('wires the manual refresh into the shared group state', () => {
+    render(<NavBar />);
+    // useRefresh must receive the context's applyRefresh, so a manual
+    // "Refresh Scores" updates every page through the provider.
+    expect(mockOnRefreshed).toBe(mockApplyRefresh);
   });
 
   it('shows refreshing state', () => {
@@ -134,5 +183,54 @@ describe('NavBar', () => {
     const dashboardLinks = screen.getAllByText('Dashboard');
     fireEvent.click(dashboardLinks[dashboardLinks.length - 1]);
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  describe('match banner', () => {
+    it('renders no banner when there are no live or upcoming matches', () => {
+      mockMatches = [makeMatch({ status: 'FINISHED', homeScore: 1, awayScore: 0 })];
+      render(<NavBar />);
+      expect(screen.queryByText('LIVE')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Next up/i)).not.toBeInTheDocument();
+    });
+
+    it('shows the live banner when a match in the shared state is in play', () => {
+      mockMatches = [
+        makeMatch({
+          status: 'LIVE',
+          homeScore: 2,
+          awayScore: 1,
+          minute: "67'",
+          datetime: new Date(Date.now() - 3_600_000).toISOString(),
+        }),
+      ];
+      render(<NavBar />);
+      expect(screen.getByText('LIVE')).toBeInTheDocument();
+      expect(screen.getByText('2 - 1')).toBeInTheDocument();
+    });
+
+    it('shows the next-up banner for an upcoming fixture', () => {
+      mockMatches = [makeMatch({ status: 'SCHEDULED' })];
+      render(<NavBar />);
+      expect(screen.getByText(/Next up/i)).toBeInTheDocument();
+    });
+
+    it('resolves team owners for the banner from the group members', () => {
+      mockGroup = {
+        groupKey: 'test',
+        groupName: 'Test',
+        members: [{ name: 'Milan', imageUrl: null, teams: ['GER'] }],
+      };
+      mockMatches = [
+        makeMatch({
+          status: 'LIVE',
+          homeScore: 0,
+          awayScore: 0,
+          minute: "12'",
+          datetime: new Date(Date.now() - 600_000).toISOString(),
+        }),
+      ];
+      render(<NavBar />);
+      expect(screen.getByText('Milan')).toBeInTheDocument();
+    });
   });
 });

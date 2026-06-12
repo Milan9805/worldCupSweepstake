@@ -5,7 +5,6 @@ import FeedPage from '../../app/feed/page';
 import { getFeed } from '../../lib/api';
 
 const mockPush = jest.fn();
-const mockLoadData = jest.fn();
 
 let mockGroupKey: string | null = 'test-group';
 let mockGroup: Record<string, unknown> | null = null;
@@ -13,13 +12,12 @@ let mockTeams: unknown[] = [];
 const mockMatches: unknown[] = [];
 let mockClaimedPerson: string | null = null;
 
-jest.mock('../../hooks/useGroup', () => ({
+jest.mock('../../hooks/GroupContext', () => ({
   useGroup: () => ({
     groupKey: mockGroupKey,
     group: mockGroup,
     teams: mockTeams,
     matches: mockMatches,
-    loadData: mockLoadData,
     claimedPerson: mockClaimedPerson,
   }),
 }));

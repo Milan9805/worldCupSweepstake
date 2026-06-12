@@ -15,7 +15,11 @@ import {
   ACTIVE_GROUP_KEY,
 } from '@/lib/groupRegistry';
 
-export function useGroup() {
+// The single source of group/teams/matches state. Call this ONCE — via
+// GroupProvider in the root layout — and consume it everywhere else through
+// useGroup() from '@/hooks/GroupContext'. Calling it per-page would create
+// independent state copies and duplicate score-poll loops.
+export function useGroupState() {
   const [groupKey, setGroupKey] = useState<string | null>(null);
   const [registry, setRegistry] = useState<GroupRegistry>({ active: null, groups: {} });
   const [group, setGroup] = useState<Group | null>(null);
@@ -163,6 +167,14 @@ export function useGroup() {
       setLoading(false);
     }
   }, [groupKey, liveRefresh]);
+
+  // Auto-load whenever the active group key becomes known or changes (mount,
+  // login, group switch). With one shared provider instance this is THE place
+  // data gets loaded — pages no longer call loadData() on mount. loadData's
+  // identity only changes with groupKey, so this runs once per key.
+  useEffect(() => {
+    if (groupKey) loadData();
+  }, [groupKey, loadData]);
 
   // Lightweight background refresh: only the things that change during play
   // (scores + team stats), without the heavier group fetch or a loading flash.

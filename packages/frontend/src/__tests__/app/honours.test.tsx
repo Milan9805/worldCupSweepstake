@@ -4,7 +4,6 @@ import { render, screen, within } from '@testing-library/react';
 import HonoursPage from '../../app/honours/page';
 
 const mockPush = jest.fn();
-const mockLoadData = jest.fn();
 
 let mockGroupKey: string | null = 'test-group';
 let mockGroup: Record<string, unknown> | null = null;
@@ -12,14 +11,12 @@ let mockTeams: unknown[] = [];
 let mockLoading = false;
 let mockClaimedPerson: string | null = null;
 
-jest.mock('../../hooks/useGroup', () => ({
+jest.mock('../../hooks/GroupContext', () => ({
   useGroup: () => ({
     groupKey: mockGroupKey,
     group: mockGroup,
     teams: mockTeams,
     loading: mockLoading,
-    loadData: mockLoadData,
-    applyRefresh: jest.fn(),
     claimedPerson: mockClaimedPerson,
   }),
 }));
@@ -168,10 +165,5 @@ describe('HonoursPage', () => {
     render(<HonoursPage />);
     expect(screen.getByText(/No members in this group yet/i)).toBeInTheDocument();
     expect(screen.queryByTestId('prize-card')).not.toBeInTheDocument();
-  });
-
-  it('calls loadData on mount', () => {
-    render(<HonoursPage />);
-    expect(mockLoadData).toHaveBeenCalled();
   });
 });
