@@ -1,9 +1,7 @@
 import { Match, Team, TeamStats } from '@sweepstake/shared';
-import { FootballDataStanding } from '../clients/footballData';
 
 /**
- * The league-table half of a team's stats — everything the football-data
- * standings endpoint supplies. Discipline (cards) and the optional
+ * The league-table half of a team's stats. Discipline (cards) and the optional
  * possession/xG live elsewhere on {@link TeamStats} and are preserved.
  */
 export interface LeagueStats {
@@ -43,28 +41,59 @@ export function deriveCardCounts(matches: Match[]): Map<string, CardCounts> {
   return counts;
 }
 
-/** Index football-data standings rows by team TLA → league stats. */
-export function indexStandings(
-  standings: FootballDataStanding[] | undefined,
-): Map<string, LeagueStats> {
-  const map = new Map<string, LeagueStats>();
-  for (const standing of standings ?? []) {
-    for (const row of standing.table ?? []) {
-      const tla = row.team?.tla;
-      if (!tla) continue;
-      map.set(tla, {
-        played: row.playedGames,
-        wins: row.won,
-        draws: row.draw,
-        losses: row.lost,
-        goalsFor: row.goalsFor,
-        goalsAgainst: row.goalsAgainst,
-        goalDifference: row.goalDifference,
-        points: row.points,
-      });
+/**
+ * Compute the group-stage league table from the match results we store — the
+ * same BBC-driven scores shown in the feed and fixtures. Deriving the table from
+ * matches (rather than a separate standings feed) guarantees it can never
+ * contradict the displayed scoreline: previously the table came from
+ * football-data standings, which lagged/disagreed (e.g. showing a 2-1 win as a
+ * 1-1 draw). Only FINISHED group-stage matches with both scores count; a team
+ * with no completed group games is absent (callers leave its stats as-is).
+ */
+export function computeLeagueStats(matches: Match[]): Map<string, LeagueStats> {
+  const table = new Map<string, LeagueStats>();
+  const row = (code: string): LeagueStats => {
+    let s = table.get(code);
+    if (!s) {
+      s = { played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, goalDifference: 0, points: 0 };
+      table.set(code, s);
+    }
+    return s;
+  };
+
+  for (const m of matches) {
+    if (m.stage !== 'GROUP_STAGE' || m.status !== 'FINISHED') continue;
+    if (m.homeScore == null || m.awayScore == null) continue;
+
+    const home = row(m.homeTeam);
+    const away = row(m.awayTeam);
+    home.played += 1;
+    away.played += 1;
+    home.goalsFor += m.homeScore;
+    home.goalsAgainst += m.awayScore;
+    away.goalsFor += m.awayScore;
+    away.goalsAgainst += m.homeScore;
+
+    if (m.homeScore > m.awayScore) {
+      home.wins += 1;
+      home.points += 3;
+      away.losses += 1;
+    } else if (m.homeScore < m.awayScore) {
+      away.wins += 1;
+      away.points += 3;
+      home.losses += 1;
+    } else {
+      home.draws += 1;
+      away.draws += 1;
+      home.points += 1;
+      away.points += 1;
     }
   }
-  return map;
+
+  for (const s of table.values()) {
+    s.goalDifference = s.goalsFor - s.goalsAgainst;
+  }
+  return table;
 }
 
 /**

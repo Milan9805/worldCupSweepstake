@@ -1,4 +1,4 @@
-import { fetchMatches, fetchStandings } from '../clients/footballData';
+import { fetchMatches } from '../clients/footballData';
 import { fetchBbcFixtures, buildBbcPatches, ScrapedFixture } from '../clients/bbcScraper';
 import { fetchMatchCards } from '../clients/bbcMatchPage';
 import { fetchTvListings, buildChannelPatches } from '../clients/footballTvScraper';
@@ -18,9 +18,8 @@ import { generateTreeIfReady, processKnockoutResults } from './generateTree';
 import { detectEvents } from './detectEvents';
 import {
   deriveCardCounts,
-  indexStandings,
+  computeLeagueStats,
   computeTeamStatUpdates,
-  LeagueStats,
 } from './teamStats';
 
 const REFRESH_COOLDOWN_MS = 20_000;
@@ -131,20 +130,18 @@ export async function refreshData(preloadedMatches?: Match[]): Promise<RefreshRe
   await generateTreeIfReady();
   await processKnockoutResults(matches);
 
-  // Refresh team stats: the league record from the API standings, card counts
-  // derived from the per-player match actions BBC supplies. A full, idempotent
-  // recompute (re-runs converge), written for only the teams that changed.
-  // Best-effort and independent — a failure here is logged, never blocks the
-  // refresh, and never undoes the score/event work above. Teams are re-read
-  // fresh so we overlay onto (not clobber) any elimination flags just written.
+  // Refresh team stats: the league table derived from our stored (BBC-driven)
+  // match results, plus card counts from the per-player match actions. Deriving
+  // the table from matches — rather than a separate football-data standings
+  // feed — keeps it consistent with the scores shown everywhere else (that feed
+  // lagged and could show a 2-1 win as a 1-1 draw). A full, idempotent recompute
+  // written for only the teams that changed. Best-effort and independent — a
+  // failure here is logged, never blocks the refresh, and never undoes the
+  // score/event work above. Teams are re-read fresh so we overlay onto (not
+  // clobber) any elimination flags just written.
   try {
     const cardCounts = deriveCardCounts(matches);
-    let standings = new Map<string, LeagueStats>();
-    try {
-      standings = indexStandings(await fetchStandings());
-    } catch (standingsError) {
-      console.warn('Standings fetch failed (keeping prior league stats):', standingsError);
-    }
+    const standings = computeLeagueStats(matches);
     const freshTeams = (await getAllTeams()) as unknown as Team[];
     const changedTeams = computeTeamStatUpdates(freshTeams, standings, cardCounts);
     if (changedTeams.length > 0) {

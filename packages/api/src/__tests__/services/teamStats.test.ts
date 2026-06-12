@@ -1,12 +1,11 @@
 import {
   deriveCardCounts,
-  indexStandings,
+  computeLeagueStats,
   computeTeamStatUpdates,
   LeagueStats,
   CardCounts,
 } from '../../services/teamStats';
 import { Match, Team, MatchAction, TeamStats } from '@sweepstake/shared';
-import { FootballDataStanding } from '../../clients/footballData';
 
 function makeMatch(actions: MatchAction[] | undefined, overrides: Partial<Match> = {}): Match {
   return {
@@ -57,25 +56,6 @@ function makeTeam(teamCode: string, stats: TeamStats = makeStats(), overrides: P
   };
 }
 
-function standing(rows: Partial<FootballDataStanding['table'][number]>[]): FootballDataStanding {
-  return {
-    group: 'A',
-    table: rows.map((r, i) => ({
-      position: i + 1,
-      team: { tla: 'ENG', name: 'England' },
-      playedGames: 0,
-      won: 0,
-      draw: 0,
-      lost: 0,
-      goalsFor: 0,
-      goalsAgainst: 0,
-      goalDifference: 0,
-      points: 0,
-      ...r,
-    })),
-  };
-}
-
 const card = (team: string, type: MatchAction['type'], minute = "10'"): MatchAction => ({
   team,
   player: `${team} player`,
@@ -108,24 +88,52 @@ describe('deriveCardCounts', () => {
   });
 });
 
-describe('indexStandings', () => {
-  it('indexes rows by team TLA', () => {
-    const map = indexStandings([
-      standing([
-        { team: { tla: 'ENG', name: 'England' }, playedGames: 3, won: 2, draw: 1, lost: 0, goalsFor: 5, goalsAgainst: 1, goalDifference: 4, points: 7 },
-        { team: { tla: 'BRA', name: 'Brazil' }, playedGames: 3, won: 1, draw: 1, lost: 1, goalsFor: 3, goalsAgainst: 3, goalDifference: 0, points: 4 },
-      ]),
-    ]);
-    expect(map.get('ENG')).toEqual<LeagueStats>({
-      played: 3, wins: 2, draws: 1, losses: 0, goalsFor: 5, goalsAgainst: 1, goalDifference: 4, points: 7,
+describe('computeLeagueStats', () => {
+  const finished = (
+    home: string,
+    away: string,
+    hs: number,
+    as_: number,
+    overrides: Partial<Match> = {},
+  ): Match =>
+    makeMatch([], {
+      homeTeam: home,
+      awayTeam: away,
+      homeScore: hs,
+      awayScore: as_,
+      status: 'FINISHED',
+      stage: 'GROUP_STAGE',
+      ...overrides,
     });
-    expect(map.get('BRA')?.points).toBe(4);
+
+  it('scores a 2-1 result as a win and a loss — never a draw (the reported bug)', () => {
+    const table = computeLeagueStats([finished('KOR', 'CZE', 2, 1)]);
+    expect(table.get('KOR')).toEqual<LeagueStats>({
+      played: 1, wins: 1, draws: 0, losses: 0, goalsFor: 2, goalsAgainst: 1, goalDifference: 1, points: 3,
+    });
+    expect(table.get('CZE')).toEqual<LeagueStats>({
+      played: 1, wins: 0, draws: 0, losses: 1, goalsFor: 1, goalsAgainst: 2, goalDifference: -1, points: 0,
+    });
   });
 
-  it('tolerates undefined standings and rows without a TLA', () => {
-    expect(indexStandings(undefined).size).toBe(0);
-    const map = indexStandings([standing([{ team: { tla: '', name: '' }, points: 9 }])]);
-    expect(map.size).toBe(0);
+  it('scores a draw as a point each and accumulates across matches', () => {
+    const table = computeLeagueStats([
+      finished('ENG', 'USA', 1, 1),
+      finished('ENG', 'IRN', 2, 0, { matchId: 'm2' }),
+    ]);
+    expect(table.get('ENG')).toMatchObject({
+      played: 2, wins: 1, draws: 1, losses: 0, goalsFor: 3, goalsAgainst: 1, goalDifference: 2, points: 4,
+    });
+    expect(table.get('USA')).toMatchObject({ draws: 1, points: 1 });
+  });
+
+  it('ignores live, knockout, and null-score matches', () => {
+    const table = computeLeagueStats([
+      finished('KOR', 'CZE', 2, 1, { status: 'LIVE' }),
+      finished('KOR', 'CZE', 2, 1, { stage: 'ROUND_OF_16', matchId: 'm3' }),
+      finished('KOR', 'CZE', 2, 1, { homeScore: null, matchId: 'm4' }),
+    ]);
+    expect(table.size).toBe(0);
   });
 });
 
