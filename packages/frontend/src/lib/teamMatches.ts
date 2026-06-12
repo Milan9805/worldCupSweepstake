@@ -28,6 +28,28 @@ export function getTeamMatchInfo(teamCode: string, matches: Match[]): TeamMatchI
   return { live, next, previous };
 }
 
+export interface TournamentMatchInfo {
+  live: Match[]; // every in-progress match (group stage runs them in parallel)
+  next: Match | null; // earliest upcoming fixture across all teams
+}
+
+// Derive the tournament-wide live/next picture from the full fixture list, for
+// the dashboard banner. Unlike getTeamMatchInfo this keeps ALL live matches
+// (several group-stage games kick off together) and finds the single soonest
+// upcoming fixture regardless of who owns the teams.
+export function getTournamentMatchInfo(matches: Match[]): TournamentMatchInfo {
+  const live = matches
+    .filter((m) => m.status === 'LIVE')
+    .sort((a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime());
+
+  const next =
+    matches
+      .filter((m) => m.status === 'SCHEDULED')
+      .sort((a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime())[0] ?? null;
+
+  return { live, next };
+}
+
 // Rank teams for dashboard display by match relevance:
 // 1. A team with a LIVE match comes first.
 // 2. Then teams with an upcoming match, soonest kickoff first.

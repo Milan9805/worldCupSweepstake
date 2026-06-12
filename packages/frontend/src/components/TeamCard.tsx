@@ -5,10 +5,8 @@ import { TeamMatchInfo } from '@/lib/teamMatches';
 import { formatMatchDate, formatMatchTime } from '@/lib/format';
 import Avatar from '@/components/Avatar';
 import LiveBadge from '@/components/LiveBadge';
-
-// Fallbacks for when the source omits a channel's colours.
-const DEFAULT_CHANNEL_BG = '#374151';
-const DEFAULT_CHANNEL_FG = '#ffffff';
+import ChannelPills from '@/components/ChannelPills';
+import OwnerTag from '@/components/OwnerTag';
 
 // Pill colours per tournament-progress tone. Group-stage tones keep the
 // original green/amber/red; alive-in-knockouts is a brighter emerald and the
@@ -165,38 +163,12 @@ function MatchInfoFooter({
                 </span>
                 <OwnerTag owner={opponentOwner(next)} />
               </div>
-              {next.channels && next.channels.length > 0 && (
-                <div className="flex flex-wrap gap-1 justify-center">
-                  {next.channels.map((channel) => (
-                    <span
-                      key={channel.name}
-                      style={{
-                        backgroundColor: channel.bg || DEFAULT_CHANNEL_BG,
-                        color: channel.fg || DEFAULT_CHANNEL_FG,
-                      }}
-                      className="text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-sm"
-                    >
-                      {channel.name}
-                    </span>
-                  ))}
-                </div>
-              )}
+              <ChannelPills channels={next.channels} />
             </div>
           )}
         </>
       )}
     </div>
-  );
-}
-
-// Shows which group member owns the opponent, when the opponent belongs to one.
-function OwnerTag({ owner }: { owner: { name: string; imageUrl: string | null } | null }) {
-  if (!owner) return null;
-  return (
-    <span className="flex items-center gap-1 text-white/70 shrink-0">
-      <Avatar name={owner.name} imageUrl={owner.imageUrl} size="xs" />
-      {owner.name}
-    </span>
   );
 }
 

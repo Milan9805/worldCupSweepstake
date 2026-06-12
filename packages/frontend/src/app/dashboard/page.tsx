@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import NavBar from '@/components/NavBar';
+import MatchBanner from '@/components/MatchBanner';
 import TeamCard from '@/components/TeamCard';
 import Leaderboard from '@/components/Leaderboard';
 import PersonClaim from '@/components/PersonClaim';
@@ -94,6 +95,7 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen">
       <NavBar groupName={group.groupName} onRefreshed={applyRefresh} />
+      <MatchBanner matches={matches} teamsByCode={teamsByCode} ownersByTeam={ownersByTeam} />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           {/* Main content */}

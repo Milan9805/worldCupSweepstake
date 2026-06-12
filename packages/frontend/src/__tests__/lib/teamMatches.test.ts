@@ -1,4 +1,9 @@
-import { getTeamMatchInfo, compareTeamsByMatch, TeamMatchInfo } from '../../lib/teamMatches';
+import {
+  getTeamMatchInfo,
+  getTournamentMatchInfo,
+  compareTeamsByMatch,
+  TeamMatchInfo,
+} from '../../lib/teamMatches';
 import { Match } from '@sweepstake/shared';
 
 const makeMatch = (overrides: Partial<Match> = {}): Match => ({
@@ -13,6 +18,46 @@ const makeMatch = (overrides: Partial<Match> = {}): Match => ({
   datetime: '2026-06-14T18:00:00Z',
   venue: 'MetLife Stadium',
   ...overrides,
+});
+
+describe('getTournamentMatchInfo', () => {
+  it('returns no live and no next when there are no matches', () => {
+    expect(getTournamentMatchInfo([])).toEqual({ live: [], next: null });
+  });
+
+  it('collects every live match, earliest kickoff first', () => {
+    const later = makeMatch({ matchId: 'l2', status: 'LIVE', datetime: '2026-06-14T20:00:00Z' });
+    const earlier = makeMatch({ matchId: 'l1', status: 'LIVE', datetime: '2026-06-14T18:00:00Z' });
+    const result = getTournamentMatchInfo([later, earlier]);
+    expect(result.live.map((m) => m.matchId)).toEqual(['l1', 'l2']);
+  });
+
+  it('ignores scheduled and finished matches when collecting live', () => {
+    const live = makeMatch({ matchId: 'live', status: 'LIVE' });
+    const scheduled = makeMatch({ matchId: 's', status: 'SCHEDULED' });
+    const finished = makeMatch({ matchId: 'f', status: 'FINISHED' });
+    const result = getTournamentMatchInfo([scheduled, live, finished]);
+    expect(result.live.map((m) => m.matchId)).toEqual(['live']);
+  });
+
+  it('picks the soonest upcoming fixture as next', () => {
+    const later = makeMatch({ matchId: 'later', status: 'SCHEDULED', datetime: '2026-06-25T18:00:00Z' });
+    const sooner = makeMatch({ matchId: 'sooner', status: 'SCHEDULED', datetime: '2026-06-18T18:00:00Z' });
+    expect(getTournamentMatchInfo([later, sooner]).next?.matchId).toBe('sooner');
+  });
+
+  it('returns a null next when nothing is scheduled', () => {
+    const finished = makeMatch({ status: 'FINISHED' });
+    expect(getTournamentMatchInfo([finished]).next).toBeNull();
+  });
+
+  it('reports live matches and the next fixture independently', () => {
+    const live = makeMatch({ matchId: 'live', status: 'LIVE' });
+    const next = makeMatch({ matchId: 'next', status: 'SCHEDULED', datetime: '2026-06-20T18:00:00Z' });
+    const result = getTournamentMatchInfo([live, next]);
+    expect(result.live.map((m) => m.matchId)).toEqual(['live']);
+    expect(result.next?.matchId).toBe('next');
+  });
 });
 
 describe('getTeamMatchInfo', () => {
