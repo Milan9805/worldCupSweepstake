@@ -659,5 +659,54 @@ describe('refreshData', () => {
 
       expect(mockedMatchPage.fetchMatchCards).not.toHaveBeenCalled();
     });
+
+    it('gives a just-finished match one final card sweep (a booking shown at the whistle)', async () => {
+      // The match was LIVE last poll; on this poll BBC flips it to FINISHED.
+      // Even though it is no longer LIVE, the finishing poll fetches its page
+      // once more so a yellow shown only at full time is still captured.
+      mockedBbc.buildBbcPatches.mockReturnValue([
+        { matchId: 'm-mex-rsa', homeScore: 1, awayScore: 0, status: 'FINISHED', minute: "90'+4" },
+      ]);
+      mockedMatchPage.fetchMatchCards.mockResolvedValue([
+        { team: 'MEX', player: 'B. Gutiérrez', type: 'YELLOW_CARD', minute: "90'+3" },
+      ]);
+
+      await refreshData();
+
+      expect(mockedMatchPage.fetchMatchCards).toHaveBeenCalledWith('c0myn4dwvzkt');
+      expect(mockedDb.putEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'YELLOW_CARD',
+          teamCode: 'MEX',
+          payload: expect.objectContaining({ player: 'B. Gutiérrez', minute: "90'+3" }),
+        }),
+      );
+    });
+
+    it('does not re-sweep a match that was already FINISHED before this poll', async () => {
+      // MEX-RSA finished on an earlier poll (its final sweep already ran); a
+      // separate live match keeps the window open. Only the live match's page is
+      // fetched — we don't re-pull a long-finished game's page every poll.
+      const finishedMatch = { ...liveMatch, status: 'FINISHED' };
+      const liveOther = {
+        matchId: 'm-ger-fra', homeTeam: 'GER', awayTeam: 'FRA',
+        homeScore: 0, awayScore: 0, status: 'LIVE', stage: 'GROUP_STAGE', group: 'C',
+        datetime: liveMatch.datetime, venue: 'Allianz Arena',
+      };
+      mockedDb.getAllMatches.mockResolvedValue([finishedMatch, liveOther]);
+      mockedFootballData.fetchMatches.mockResolvedValue([finishedMatch, liveOther] as never);
+      mockedBbc.fetchBbcFixtures.mockResolvedValue([
+        scrapedFixture, // MEX-RSA, topic c0myn4dwvzkt — already finished, must be skipped
+        {
+          homeTeam: 'GER', awayTeam: 'FRA', homeScore: 0, awayScore: 0, status: 'LIVE' as const,
+          datetime: liveMatch.datetime, minute: "10'", actions: [], tipoTopicId: 'topic-ger-fra',
+        },
+      ]);
+
+      await refreshData();
+
+      expect(mockedMatchPage.fetchMatchCards).toHaveBeenCalledWith('topic-ger-fra');
+      expect(mockedMatchPage.fetchMatchCards).not.toHaveBeenCalledWith('c0myn4dwvzkt');
+    });
   });
 });

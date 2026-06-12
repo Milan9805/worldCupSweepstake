@@ -51,6 +51,13 @@ export async function refreshData(preloadedMatches?: Match[]): Promise<RefreshRe
   // through every step below so we never re-scan the table.
   let matches = preloadedMatches ?? ((await getAllMatches()) as unknown as Match[]);
 
+  // Snapshot each match's status as it stood at the start of this poll, before
+  // any merge below can flip it. The card overlay uses this to spot a match that
+  // transitions LIVE → FINISHED *this* cycle and give it one final card sweep
+  // (a booking shown only at the whistle would otherwise be missed, since the
+  // overlay normally fetches pages for LIVE matches only).
+  const prevStatusById = new Map(matches.map((m) => [m.matchId, m.status] as const));
+
   // Current team state, indexed by code, so event detection can attach
   // elimination info to a match that has just reached full time.
   const teamsById = indexTeamsByCode((await getAllTeams()) as unknown as Team[]);
@@ -80,7 +87,7 @@ export async function refreshData(preloadedMatches?: Match[]): Promise<RefreshRe
         if (livePatches.length > 0) source = 'bbc';
         // The fixtures feed carries goals + red cards but NOT yellows; the per-
         // match page has the full card list. Overlay it for in-play matches.
-        matches = await overlayMatchPageCards(matches, scraped, teamsById);
+        matches = await overlayMatchPageCards(matches, scraped, teamsById, prevStatusById);
       } catch (liveError) {
         console.warn('BBC live overlay failed (keeping API data):', liveError);
       }
@@ -91,7 +98,7 @@ export async function refreshData(preloadedMatches?: Match[]): Promise<RefreshRe
       const scraped = await fetchBbcFixtures();
       const patches = buildBbcPatches(scraped, matches);
       matches = await mergeAndWrite(matches, patches, (p) => p.matchId, teamsById, { onlyExisting: true });
-      matches = await overlayMatchPageCards(matches, scraped, teamsById);
+      matches = await overlayMatchPageCards(matches, scraped, teamsById, prevStatusById);
       source = 'bbc';
       refreshedAt = now;
       await putConfig('lastRefreshTime', String(now));
@@ -196,28 +203,40 @@ async function mergeAndWrite<U extends { matchId?: string }>(
 }
 
 /**
- * Overlay BBC per-match page cards onto in-play matches. The scores-fixtures
- * feed carries goals + red cards but NEVER yellows; the per-match page has the
- * full card list. For each LIVE match we pair it with the topic id from its
+ * Overlay BBC per-match page cards onto matches. The scores-fixtures feed
+ * carries goals + red cards but NEVER yellows; the per-match page has the full
+ * card list. For each target match we pair it with the topic id from its
  * scraped fixture, fetch its page, and merge the cards into `Match.actions` —
  * which lights up the YELLOW_CARD/RED_CARD feed events (via detectEvents) and
  * the per-team card counts (via teamStats) automatically. Best-effort and
  * bounded: a per-match fetch failure is isolated and never blocks the refresh.
+ *
+ * Targets are LIVE matches (swept every poll while in play) *plus* any match
+ * that flipped LIVE → FINISHED on this very poll — `prevStatusById` tells us
+ * which. That end-of-match sweep is the one chance to capture a card shown only
+ * at the final whistle: once a match is FINISHED it's no longer LIVE, so without
+ * this it would never be fetched again. The just-finished poll still runs inside
+ * the active window (the match was LIVE when the window was checked), so this
+ * needs no change to the window logic. `mergeCardActions` is idempotent, so the
+ * extra sweep can only add the missing card, never duplicate an existing one.
  */
 async function overlayMatchPageCards(
   matches: Match[],
   scraped: ScrapedFixture[],
   teamsById: Map<string, Team>,
+  prevStatusById: Map<string, MatchStatus>,
 ): Promise<Match[]> {
-  // Pair each in-play match with the topic id from its scraped fixture (same
+  // Pair each target match with the topic id from its scraped fixture (same
   // home+away+day correlation buildBbcPatches uses). Cards only happen in play,
-  // so we fetch pages for LIVE matches only.
+  // so we sweep LIVE matches — plus one final sweep for a match that just
+  // reached full time this poll (LIVE last poll, FINISHED now).
   const targets: { matchId: string; topicId: string }[] = [];
   for (const fixture of scraped) {
     if (!fixture.tipoTopicId) continue;
     const match = matches.find(
       (m) =>
-        m.status === 'LIVE' &&
+        (m.status === 'LIVE' ||
+          (m.status === 'FINISHED' && prevStatusById.get(m.matchId) !== 'FINISHED')) &&
         m.homeTeam === fixture.homeTeam &&
         m.awayTeam === fixture.awayTeam &&
         sameDay(m.datetime, fixture.datetime),

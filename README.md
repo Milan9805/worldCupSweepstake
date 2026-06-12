@@ -536,7 +536,9 @@ YELLOW_CARD / RED_CARD feed events and the per-team card counts. The match page
 is authoritative for cards, so a red reported by both sources is de-duped rather
 than doubled. Goal-scorer attachment reconciles each poll, so a scorer that
 arrives a poll after the score still lands on the goal (same `eventId`, newest
-wins at read time).
+wins at read time). The per-match page is swept every poll while a match is LIVE,
+plus **one final time on the poll it reaches full time** — so a booking shown
+only at the whistle is still captured before the match drops out of the live set.
 
 ### Team standings (derived from results)
 
