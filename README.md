@@ -175,7 +175,7 @@ sweepstake/
 | GET | `/api/matches` | Get all matches |
 | GET | `/api/teams` | Get all teams with stats |
 | GET | `/api/bracket` | Get tournament bracket |
-| GET | `/api/feed` | Recent activity-feed events (goals, kickoffs, results, eliminations) |
+| GET | `/api/feed` | Recent activity-feed events (goals + scorers, yellow/red cards, kickoffs, half/full-time, eliminations) |
 | POST | `/api/refresh` | Refresh scores + live minute + TV channels (BBC live overlay/fallback); also writes feed events |
 | POST | `/api/admin/login` | Admin authentication |
 | POST | `/api/admin/members` | Update group members |
@@ -190,7 +190,7 @@ The refresh response is `{ matches, teams, source, refreshedAt }`.
 - **/dashboard** — Per-person team dashboard with stats and leaderboard (you're pinned first; tap others to view their teams)
 - **/groups** — Group stage tables and fixtures
 - **/bracket** — Visual tournament bracket (R32 → Final)
-- **/feed** — Live activity feed (goals, kickoffs, full-time, eliminations) with your events highlighted
+- **/feed** — Live activity feed (goals + scorers, yellow/red cards, kickoffs, half/full-time, eliminations) with your events highlighted
 - **/honours** — Honours board: side prizes derived from team stats
 - **/admin** — Admin panel (member management, team assignment, avatar upload)
 
@@ -217,8 +217,9 @@ The refresh response is `{ matches, teams, source, refreshedAt }`.
 
 ### Live feed (`/feed`)
 
-- A chronological timeline of tournament events — **goals, kick-offs, full-time
-  results, eliminations, and bracket-drawn** — with team flags, scorelines, the
+- A chronological timeline of tournament events — **goals (with scorer),
+  yellow/red cards (with player), kick-offs, half-time, full-time results,
+  eliminations, and bracket-drawn** — with team flags, scorelines, the
   owning member shown in brackets, and relative timestamps that tick while the
   page is open. Events involving **your** teams are highlighted.
 - Events are detected during `/api/refresh` by diffing each match's previous vs
@@ -470,8 +471,9 @@ doesn't serve in-play data (see the caveat above):
 1. **Live overlay (primary live source).** Whenever a match is in its active
    window, `/api/refresh` scrapes BBC **on top of** the successful
    football-data.org sync and overlays the live `homeScore`, `awayScore`,
-   `status`, and match `minute`. This is what actually drives live scores and
-   the KICKOFF / GOAL / FULL_TIME feed events.
+   `status`, match `minute`, and per-player `actions` (goals + bookings). This
+   drives live scores and the KICKOFF / GOAL (with scorer) / HALF_TIME /
+   FULL_TIME / YELLOW_CARD / RED_CARD feed events, plus the per-team card counts.
 2. **Outage fallback.** If the football-data.org call itself fails (rate limit,
    outage, expired key, etc.), the refresh falls back to BBC for the whole sync.
 
@@ -498,11 +500,11 @@ kickoff/goal events.
 
 ### Lifecycle constraint
 
-The BBC patch **only touches `homeScore`, `awayScore`, `status`, and `minute` on
-matches that already exist in DynamoDB**. It never creates new rows. That means
-football-data.org (or seed data) must have populated the fixtures table at
-least once with the correct `stage`, `group`, `datetime`, and team TLAs before
-BBC can do anything useful. Fixtures BBC reports that don't correspond to an
+The BBC patch **only touches `homeScore`, `awayScore`, `status`, `minute`, and
+`actions` on matches that already exist in DynamoDB**. It never creates new rows.
+That means football-data.org (or seed data) must have populated the fixtures
+table at least once with the correct `stage`, `group`, `datetime`, and team TLAs
+before BBC can do anything useful. Fixtures BBC reports that don't correspond to an
 existing row are silently dropped, as are knockout placeholders ("TBC" /
 "Winner Group A" etc.).
 
@@ -520,6 +522,32 @@ in `statusComment` (`"19'"`, `"45+2'"`, `"HT"`); the scraper maps `MidEvent` →
 `LIVE` and carries that clock through as the match `minute` (only while live, so
 a finished row never shows a stale clock). `MatchList` renders it beside the
 **LIVE** badge.
+
+### Player actions, cards & the per-match page
+
+The fixtures feed also carries each match's **goals and red cards** (per player,
+with the scorer/bookee name and minute), which the scraper flattens onto
+`Match.actions`. **Yellow cards are *not* in that feed** — BBC only lists "key
+events" there — so for in-play matches the refresh additionally fetches BBC's
+**per-match page** ([`bbcMatchPage.ts`](packages/api/src/clients/bbcMatchPage.ts);
+`/sport/football/live/<id>`, linked from each fixture) and reads the full booking
+list (yellows + reds) from its lineup data. These actions drive the GOAL-scorer /
+YELLOW_CARD / RED_CARD feed events and the per-team card counts. The match page
+is authoritative for cards, so a red reported by both sources is de-duped rather
+than doubled. Goal-scorer attachment reconciles each poll, so a scorer that
+arrives a poll after the score still lands on the goal (same `eventId`, newest
+wins at read time).
+
+### Team standings (derived from results)
+
+The group table (`Team.stats`: P/W/D/L, GF/GA/GD, points) is **computed from the
+stored, BBC-driven match results** ([`teamStats.ts`](packages/api/src/services/teamStats.ts)),
+not a separate standings feed. football-data has a standings endpoint, but it
+lagged and could contradict the live scoreline (rendering a 2-1 win as a 1-1
+draw), so the table is derived from the same finished matches shown everywhere
+else and can't disagree with them. Card counts come from `Match.actions`. Both
+feed the dashboard, the group table, qualification, and the knockout bracket
+seeding.
 
 ### Verifying live scores / the fallback locally
 
@@ -569,8 +597,10 @@ when the channel list is unchanged.
   in it
 - **Manual + background refresh**: a user-triggered refresh button with a 20s
   global cooldown, plus a scheduled background refresh while matches are live.
-  football-data.org is primary; BBC scraping is the automatic fallback when the
-  API errors. Each refresh also derives **feed events** from the score diff
+  football-data.org seeds fixtures/schedule; BBC scraping is the live source
+  (and the automatic fallback when the API errors). Each refresh also derives
+  **feed events** (goals + scorers, cards, kickoffs, half/full-time, eliminations)
+  and **team stats** (the group table from results, card counts from match actions)
 - **Static export**: Frontend is pure static HTML/JS served from S3/CloudFront
 - **Shared group key + on-device identity**: a passphrase per group (no
   server-side accounts); each device remembers who you are and which groups
