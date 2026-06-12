@@ -26,8 +26,6 @@ export function detectEvents(
   const ts = new Date().toISOString();
   const matchId = merged.matchId;
 
-  const prevHome = existing?.homeScore ?? 0;
-  const prevAway = existing?.awayScore ?? 0;
   const nextHome = merged.homeScore ?? 0;
   const nextAway = merged.awayScore ?? 0;
 
@@ -41,46 +39,71 @@ export function detectEvents(
   const next = merged.actions ?? [];
   const prevKeys = new Set(prev.map(key));
 
-  // ===== GOAL — one event per side whose score increased =====
-  if (nextHome > prevHome) {
-    const goal: FeedEvent = {
-      eventId: `${matchId}#GOAL#${nextHome}-${nextAway}`,
-      ts,
-      type: 'GOAL',
-      teamCode: merged.homeTeam,
-      matchId,
-      payload: {
-        homeTeam: merged.homeTeam,
-        awayTeam: merged.awayTeam,
-        homeScore: nextHome,
-        awayScore: nextAway,
-        scoringTeam: merged.homeTeam,
-        side: 'home',
-        stage: merged.stage,
-      },
+  // ===== GOAL — per-side, per-index events recomputed each poll =====
+  // The score increment and the goal ACTION (which names the scorer) typically
+  // land in DIFFERENT polls, so we can't rely on the scorer being present the
+  // moment the score moves. Instead we derive one DETERMINISTIC event per goal
+  // a side has scored (`#GOAL#<side>#<goalIndex>`), recomputed every poll. The
+  // i-th goal's scorer is the i-th GOAL action for that side (BBC carries the
+  // full cumulative list each poll, in order). When the action hasn't arrived
+  // yet the event is emitted scorer-less; once it lands a later poll re-emits
+  // the SAME eventId WITH the scorer, and read-time dedupe (newest wins) makes
+  // the scorer appear in the feed without a second row.
+  for (const side of ['home', 'away'] as const) {
+    const teamCode = side === 'home' ? merged.homeTeam : merged.awayTeam;
+
+    // Desired GOAL events for a match state: one per goal that side has scored,
+    // each carrying the scorer of the same-index GOAL action when known.
+    // Own goals: BBC tags a GOAL action with the SCORER's own team (the
+    // conceding side), so it won't match the scoring `teamCode` and that index
+    // stays scorer-less — we never attribute a goal to the wrong team.
+    const desiredGoals = (m: Match | undefined): FeedEvent[] => {
+      const count = (side === 'home' ? m?.homeScore : m?.awayScore) ?? 0;
+      const sideGoalActions = (m?.actions ?? []).filter(
+        (a) => a.type === 'GOAL' && a.team === teamCode
+      );
+      const out: FeedEvent[] = [];
+      for (let i = 0; i < count; i++) {
+        const action = sideGoalActions[i];
+        const payload: Record<string, unknown> = {
+          homeTeam: merged.homeTeam,
+          awayTeam: merged.awayTeam,
+          homeScore: nextHome,
+          awayScore: nextAway,
+          scoringTeam: teamCode,
+          side,
+          stage: merged.stage,
+          goalIndex: i,
+        };
+        // Omit scorer keys entirely when the action is absent, so a later poll
+        // that adds them is a real change the emit rule below can detect.
+        if (action) {
+          payload.scorer = action.player;
+          payload.scorerMinute = action.minute;
+        }
+        out.push({
+          eventId: `${matchId}#GOAL#${side}#${i}`,
+          ts,
+          type: 'GOAL',
+          teamCode,
+          matchId,
+          payload,
+        });
+      }
+      return out;
     };
-    enrichScorer(goal, next, prevKeys, merged.homeTeam, key);
-    events.push(goal);
-  }
-  if (nextAway > prevAway) {
-    const goal: FeedEvent = {
-      eventId: `${matchId}#GOAL#${nextHome}-${nextAway}`,
-      ts,
-      type: 'GOAL',
-      teamCode: merged.awayTeam,
-      matchId,
-      payload: {
-        homeTeam: merged.homeTeam,
-        awayTeam: merged.awayTeam,
-        homeScore: nextHome,
-        awayScore: nextAway,
-        scoringTeam: merged.awayTeam,
-        side: 'away',
-        stage: merged.stage,
-      },
-    };
-    enrichScorer(goal, next, prevKeys, merged.awayTeam, key);
-    events.push(goal);
+
+    const desiredFromMerged = desiredGoals(merged);
+    const desiredFromExisting = desiredGoals(existing);
+
+    // Emit each desired goal that's new (index not previously present) or whose
+    // scorer just became known/changed since `existing`.
+    for (let i = 0; i < desiredFromMerged.length; i++) {
+      const prevGoal = desiredFromExisting[i];
+      if (!prevGoal || prevGoal.payload.scorer !== desiredFromMerged[i].payload.scorer) {
+        events.push(desiredFromMerged[i]);
+      }
+    }
   }
 
   // ===== CARDS — one event per new booking action =====
@@ -191,29 +214,6 @@ export function detectEvents(
   }
 
   return events;
-}
-
-/**
- * Attach `scorer`/`scorerMinute` to a GOAL event from the per-player action
- * list. The score delta tells us a side scored; the actions tell us who. We
- * only enrich when EXACTLY ONE new GOAL action exists for that side this
- * transition — zero (actions absent/lagging) or many (ambiguous which goal the
- * delta is) leaves the goal scorer-less rather than guessing.
- */
-function enrichScorer(
-  goal: FeedEvent,
-  next: MatchAction[],
-  prevKeys: Set<string>,
-  teamCode: string,
-  key: (a: MatchAction) => string
-): void {
-  const newGoals = next.filter(
-    (a) => a.type === 'GOAL' && a.team === teamCode && !prevKeys.has(key(a))
-  );
-  if (newGoals.length === 1) {
-    goal.payload.scorer = newGoals[0].player;
-    goal.payload.scorerMinute = newGoals[0].minute;
-  }
 }
 
 /**

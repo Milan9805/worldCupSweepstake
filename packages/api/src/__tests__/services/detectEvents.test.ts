@@ -54,7 +54,7 @@ const NO_TEAMS = teamsMap();
 
 describe('detectEvents', () => {
   describe('GOAL', () => {
-    it('emits a GOAL when the home score increases', () => {
+    it('emits a per-index GOAL when the home score increases (no actions yet)', () => {
       const existing = makeMatch({ homeScore: 0, awayScore: 0, status: 'LIVE' });
       const merged = makeMatch({ homeScore: 1, awayScore: 0, status: 'LIVE' });
 
@@ -62,15 +62,24 @@ describe('detectEvents', () => {
 
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({
-        eventId: 'm1#GOAL#1-0',
+        eventId: 'm1#GOAL#home#0',
         type: 'GOAL',
         teamCode: 'ENG',
         matchId: 'm1',
-        payload: { scoringTeam: 'ENG', side: 'home', homeScore: 1, awayScore: 0 },
+        payload: {
+          scoringTeam: 'ENG',
+          side: 'home',
+          homeScore: 1,
+          awayScore: 0,
+          goalIndex: 0,
+        },
       });
+      // No action present yet -> scorer omitted entirely.
+      expect(events[0].payload).not.toHaveProperty('scorer');
+      expect(events[0].payload).not.toHaveProperty('scorerMinute');
     });
 
-    it('emits a GOAL when the away score increases', () => {
+    it('emits a per-index GOAL when the away score increases', () => {
       const existing = makeMatch({ homeScore: 1, awayScore: 0, status: 'LIVE' });
       const merged = makeMatch({ homeScore: 1, awayScore: 1, status: 'LIVE' });
 
@@ -78,10 +87,10 @@ describe('detectEvents', () => {
 
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({
-        eventId: 'm1#GOAL#1-1',
+        eventId: 'm1#GOAL#away#0',
         type: 'GOAL',
         teamCode: 'BRA',
-        payload: { scoringTeam: 'BRA', side: 'away', homeScore: 1, awayScore: 1 },
+        payload: { scoringTeam: 'BRA', side: 'away', homeScore: 1, awayScore: 1, goalIndex: 0 },
       });
     });
 
@@ -92,20 +101,59 @@ describe('detectEvents', () => {
       const events = detectEvents(existing, merged, NO_TEAMS);
 
       expect(events.map((e) => e.type)).toEqual(['GOAL']);
-      expect(events[0].eventId).toBe('m1#GOAL#1-0');
+      expect(events[0].eventId).toBe('m1#GOAL#home#0');
     });
 
-    it('emits two GOAL events when both sides scored in one refresh', () => {
-      const existing = makeMatch({ homeScore: 1, awayScore: 1, status: 'LIVE' });
-      const merged = makeMatch({ homeScore: 2, awayScore: 2, status: 'LIVE' });
+    it('emits all merged indices when existing is undefined (first detect)', () => {
+      const merged = makeMatch({ homeScore: 2, awayScore: 1, status: 'LIVE' });
+
+      const events = detectEvents(undefined, merged, NO_TEAMS);
+
+      const goals = events.filter((e) => e.type === 'GOAL');
+      expect(goals.map((e) => e.eventId).sort()).toEqual([
+        'm1#GOAL#away#0',
+        'm1#GOAL#home#0',
+        'm1#GOAL#home#1',
+      ]);
+    });
+
+    it('emits one event per side when both sides score in one poll', () => {
+      const existing = makeMatch({ homeScore: 0, awayScore: 0, status: 'LIVE' });
+      const merged = makeMatch({ homeScore: 1, awayScore: 1, status: 'LIVE' });
 
       const events = detectEvents(existing, merged, NO_TEAMS);
 
       const goals = events.filter((e) => e.type === 'GOAL');
       expect(goals).toHaveLength(2);
+      expect(goals.map((e) => e.eventId).sort()).toEqual([
+        'm1#GOAL#away#0',
+        'm1#GOAL#home#0',
+      ]);
       expect(goals.map((e) => e.teamCode).sort()).toEqual(['BRA', 'ENG']);
-      // Both share the deterministic final scoreline in their key.
-      expect(goals.every((e) => e.eventId === 'm1#GOAL#2-2')).toBe(true);
+    });
+
+    it('emits #0 and #1 when one side scores twice in a single poll', () => {
+      const existing = makeMatch({ homeScore: 0, awayScore: 0, status: 'LIVE' });
+      const merged = makeMatch({ homeScore: 2, awayScore: 0, status: 'LIVE' });
+
+      const events = detectEvents(existing, merged, NO_TEAMS);
+
+      const goals = events.filter((e) => e.type === 'GOAL');
+      expect(goals.map((e) => e.eventId).sort()).toEqual([
+        'm1#GOAL#home#0',
+        'm1#GOAL#home#1',
+      ]);
+      expect(goals.every((e) => e.teamCode === 'ENG')).toBe(true);
+    });
+
+    it('does not re-emit a GOAL when score and scorer are unchanged', () => {
+      const goalAction = { team: 'ENG', player: 'Kane', type: 'GOAL' as const, minute: "23'" };
+      const existing = makeMatch({ homeScore: 1, awayScore: 0, status: 'LIVE', actions: [goalAction] });
+      const merged = makeMatch({ homeScore: 1, awayScore: 0, status: 'LIVE', actions: [goalAction] });
+
+      const events = detectEvents(existing, merged, NO_TEAMS);
+
+      expect(events.some((e) => e.type === 'GOAL')).toBe(false);
     });
   });
 
@@ -342,6 +390,7 @@ describe('detectEvents', () => {
 
       const goal = events.find((e) => e.type === 'GOAL');
       expect(goal).toBeDefined();
+      expect(goal?.eventId).toBe('m1#GOAL#home#0');
       expect(goal?.payload).toMatchObject({
         scoringTeam: 'ENG',
         side: 'home',
@@ -362,6 +411,7 @@ describe('detectEvents', () => {
       const events = detectEvents(existing, merged, NO_TEAMS);
 
       const goal = events.find((e) => e.type === 'GOAL');
+      expect(goal?.eventId).toBe('m1#GOAL#away#0');
       expect(goal?.payload).toMatchObject({
         scoringTeam: 'BRA',
         side: 'away',
@@ -370,11 +420,36 @@ describe('detectEvents', () => {
       });
     });
 
-    it('leaves the goal scorer-less when two new home goal actions are ambiguous', () => {
-      const existing = makeMatch({ status: 'LIVE', homeScore: 0, awayScore: 0, actions: [] });
+    it('re-emits the same GOAL eventId with the scorer when the action lands in a later poll', () => {
+      // Poll 1 already produced m1#GOAL#home#0 scorer-less; the score is
+      // unchanged this poll but the goal ACTION has now arrived.
+      const existing = makeMatch({ status: 'LIVE', homeScore: 1, awayScore: 0, actions: [] });
       const merged = makeMatch({
         status: 'LIVE',
         homeScore: 1,
+        awayScore: 0,
+        actions: [{ team: 'ENG', player: 'Kane', type: 'GOAL', minute: "23'" }],
+      });
+
+      const events = detectEvents(existing, merged, NO_TEAMS);
+
+      const goal = events.find((e) => e.type === 'GOAL');
+      expect(goal).toBeDefined();
+      // SAME deterministic eventId as poll 1 -> newest wins at read time.
+      expect(goal?.eventId).toBe('m1#GOAL#home#0');
+      expect(goal?.payload).toMatchObject({
+        scoringTeam: 'ENG',
+        side: 'home',
+        scorer: 'Kane',
+        scorerMinute: "23'",
+      });
+    });
+
+    it('attaches the matching scorer to each index when two home goals arrive with both actions', () => {
+      const existing = makeMatch({ status: 'LIVE', homeScore: 0, awayScore: 0, actions: [] });
+      const merged = makeMatch({
+        status: 'LIVE',
+        homeScore: 2,
         awayScore: 0,
         actions: [
           { team: 'ENG', player: 'Kane', type: 'GOAL', minute: "23'" },
@@ -384,7 +459,68 @@ describe('detectEvents', () => {
 
       const events = detectEvents(existing, merged, NO_TEAMS);
 
-      const goal = events.find((e) => e.type === 'GOAL');
+      const goals = events.filter((e) => e.type === 'GOAL');
+      const byId = new Map(goals.map((g) => [g.eventId, g]));
+      expect(byId.get('m1#GOAL#home#0')?.payload).toMatchObject({
+        goalIndex: 0,
+        scorer: 'Kane',
+        scorerMinute: "23'",
+      });
+      expect(byId.get('m1#GOAL#home#1')?.payload).toMatchObject({
+        goalIndex: 1,
+        scorer: 'Bellingham',
+        scorerMinute: "24'",
+      });
+    });
+
+    it('emits two scorer-less goals, then re-emits both with scorers once the actions arrive', () => {
+      // Poll A: score jumps 0->2 with no actions yet.
+      const existing = makeMatch({ status: 'LIVE', homeScore: 0, awayScore: 0, actions: [] });
+      const afterScore = makeMatch({ status: 'LIVE', homeScore: 2, awayScore: 0, actions: [] });
+
+      const firstEvents = detectEvents(existing, afterScore, NO_TEAMS);
+      const firstGoals = firstEvents.filter((e) => e.type === 'GOAL');
+      expect(firstGoals.map((e) => e.eventId).sort()).toEqual([
+        'm1#GOAL#home#0',
+        'm1#GOAL#home#1',
+      ]);
+      expect(firstGoals.every((g) => !('scorer' in g.payload))).toBe(true);
+
+      // Poll B: same score, both goal actions have now landed.
+      const withActions = makeMatch({
+        status: 'LIVE',
+        homeScore: 2,
+        awayScore: 0,
+        actions: [
+          { team: 'ENG', player: 'Kane', type: 'GOAL', minute: "23'" },
+          { team: 'ENG', player: 'Bellingham', type: 'GOAL', minute: "24'" },
+        ],
+      });
+
+      const secondEvents = detectEvents(afterScore, withActions, NO_TEAMS);
+      const secondGoals = secondEvents.filter((e) => e.type === 'GOAL');
+      const byId = new Map(secondGoals.map((g) => [g.eventId, g]));
+      // Same eventIds re-emitted, now carrying their scorers.
+      expect([...byId.keys()].sort()).toEqual(['m1#GOAL#home#0', 'm1#GOAL#home#1']);
+      expect(byId.get('m1#GOAL#home#0')?.payload).toMatchObject({ scorer: 'Kane', scorerMinute: "23'" });
+      expect(byId.get('m1#GOAL#home#1')?.payload).toMatchObject({ scorer: 'Bellingham', scorerMinute: "24'" });
+    });
+
+    it('leaves an own goal scorer-less (action tagged with the conceding side)', () => {
+      // Home score goes 0->1, but the only GOAL action belongs to the AWAY team
+      // (an own goal is credited to the scorer's own side). It must not be
+      // attributed to the away player on the home goal.
+      const existing = makeMatch({ status: 'LIVE', homeScore: 0, awayScore: 0, actions: [] });
+      const merged = makeMatch({
+        status: 'LIVE',
+        homeScore: 1,
+        awayScore: 0,
+        actions: [{ team: 'BRA', player: 'Marquinhos', type: 'GOAL', minute: "12'" }],
+      });
+
+      const events = detectEvents(existing, merged, NO_TEAMS);
+
+      const goal = events.find((e) => e.type === 'GOAL' && e.eventId === 'm1#GOAL#home#0');
       expect(goal).toBeDefined();
       expect(goal?.payload).not.toHaveProperty('scorer');
       expect(goal?.payload).not.toHaveProperty('scorerMinute');
@@ -397,7 +533,7 @@ describe('detectEvents', () => {
       const events = detectEvents(existing, merged, NO_TEAMS);
 
       const goal = events.find((e) => e.type === 'GOAL');
-      expect(goal?.eventId).toBe('m1#GOAL#1-0');
+      expect(goal?.eventId).toBe('m1#GOAL#home#0');
       expect(goal?.payload).not.toHaveProperty('scorer');
       expect(goal?.payload).not.toHaveProperty('scorerMinute');
     });
