@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import NavBar from '@/components/NavBar';
+import Spinner from '@/components/Spinner';
 import MatchList from '@/components/MatchList';
 import { useGroup } from '@/hooks/GroupContext';
 import { buildOwnersByTeam } from '@/lib/owners';
@@ -57,7 +58,7 @@ export default function GroupsPage() {
   if (loading && teams.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-green-200">Loading...</div>
+        <Spinner label="Loading…" />
       </div>
     );
   }

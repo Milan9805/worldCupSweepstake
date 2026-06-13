@@ -59,7 +59,7 @@ describe('BracketPage', () => {
   it('shows loading state initially', () => {
     mockedApi.getTree.mockReturnValue(new Promise(() => {}));
     render(<BracketPage />);
-    expect(screen.getByText('Loading...')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
   it('redirects to home if no group key', async () => {
@@ -68,7 +68,7 @@ describe('BracketPage', () => {
     expect(mockPush).toHaveBeenCalledWith('/');
     // Flush the in-flight getTree so its state updates land inside the test.
     await waitFor(() => {
-      expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
     });
   });
 
@@ -107,7 +107,7 @@ describe('BracketPage', () => {
     render(<BracketPage />);
 
     await waitFor(() => {
-      expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
     });
     consoleSpy.mockRestore();
   });
@@ -118,7 +118,7 @@ describe('BracketPage', () => {
 
     const { rerender } = render(<BracketPage />);
     await waitFor(() => {
-      expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
     });
     expect(mockedApi.getTree).toHaveBeenCalledTimes(1);
 

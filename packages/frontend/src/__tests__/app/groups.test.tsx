@@ -65,7 +65,7 @@ describe('GroupsPage', () => {
   it('shows loading state while the context loads with no teams yet', () => {
     mockLoading = true;
     render(<GroupsPage />);
-    expect(screen.getByText('Loading...')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
   it('does not flash the loading screen when teams are already populated', () => {
@@ -73,7 +73,7 @@ describe('GroupsPage', () => {
     mockTeams = seedTeams;
     mockGroup = seedGroup;
     render(<GroupsPage />);
-    expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
     expect(screen.getByText('Group Stages')).toBeInTheDocument();
   });
 

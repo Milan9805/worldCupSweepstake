@@ -59,7 +59,7 @@ describe('TreePage', () => {
   it('shows loading state initially', () => {
     mockedApi.getTree.mockReturnValue(new Promise(() => {}));
     render(<TreePage />);
-    expect(screen.getByText('Loading...')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
   it('redirects to home if no group key', async () => {
@@ -68,7 +68,7 @@ describe('TreePage', () => {
     expect(mockPush).toHaveBeenCalledWith('/');
     // Flush the in-flight getTree so its state updates land inside the test.
     await waitFor(() => {
-      expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
     });
   });
 
@@ -104,7 +104,7 @@ describe('TreePage', () => {
 
     const { rerender } = render(<TreePage />);
     await waitFor(() => {
-      expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
     });
     expect(mockedApi.getTree).toHaveBeenCalledTimes(1);
 

@@ -115,7 +115,7 @@ describe('DashboardPage', () => {
     mockLoading = true;
     mockGroup = null;
     render(<DashboardPage />);
-    expect(screen.getByText('Loading...')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
   it('redirects to home if no groupKey and no stored key', () => {

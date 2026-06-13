@@ -141,7 +141,7 @@ describe('HonoursPage', () => {
     mockLoading = true;
     mockGroup = null;
     render(<HonoursPage />);
-    expect(screen.getByText('Loading...')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
   it('returns null when no group and not loading', () => {

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import NavBar from '@/components/NavBar';
+import Spinner from '@/components/Spinner';
 import TeamCard from '@/components/TeamCard';
 import Leaderboard from '@/components/Leaderboard';
 import PersonClaim from '@/components/PersonClaim';
@@ -51,7 +52,7 @@ export default function DashboardPage() {
   if (loading && !group) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-green-200">Loading...</div>
+        <Spinner label="Loading…" />
       </div>
     );
   }
