@@ -184,6 +184,14 @@ describe('FeedPage', () => {
     );
   });
 
+  it('shows a loading spinner (not the empty state) while the feed is loading', () => {
+    // A feed fetch that never resolves keeps the page in its loading state.
+    mockGetFeed.mockReturnValue(new Promise<never>(() => {}));
+    render(<FeedPage />);
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing has happened yet/i)).not.toBeInTheDocument();
+  });
+
   it('renders a half-time event with its label and scoreline', async () => {
     mockGetFeed.mockResolvedValue([
       {

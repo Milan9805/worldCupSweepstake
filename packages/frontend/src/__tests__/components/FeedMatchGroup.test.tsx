@@ -75,6 +75,17 @@ describe('FeedMatchGroup', () => {
     expect(header).toHaveAttribute('aria-expanded', 'true');
   });
 
+  it('highlights the card when the claimed person owns a team in the match', () => {
+    // Alice owns ENG (the default ENG–GER match).
+    renderGroup(makeMatch({ status: 'LIVE' }));
+    expect(screen.getByTestId('feed-group')).toHaveAttribute('data-involves-claimed', 'true');
+  });
+
+  it('does not highlight the card when the claimed person owns no team in the match', () => {
+    renderGroup(makeMatch({ homeTeam: 'FRA', awayTeam: 'ITA', status: 'LIVE' }));
+    expect(screen.getByTestId('feed-group')).toHaveAttribute('data-involves-claimed', 'false');
+  });
+
   it('renders the synthetic group with a neutral "Tournament" header', () => {
     const events = [
       { eventId: 'b1', ts: '2026-06-12T19:00:00Z', type: 'BRACKET_DRAWN' as const, payload: { slots: 16 } },

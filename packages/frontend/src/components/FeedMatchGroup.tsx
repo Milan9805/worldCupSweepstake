@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Team } from '@sweepstake/shared';
-import { MatchEventGroup, isGroupExpandedByDefault } from '@/lib/feedGroups';
+import { MatchEventGroup, isGroupExpandedByDefault, isGroupMine } from '@/lib/feedGroups';
 import { TeamOwner } from '@/lib/owners';
 import LiveBadge from '@/components/LiveBadge';
 import MatchScoreline from '@/components/MatchScoreline';
@@ -35,8 +35,18 @@ export default function FeedMatchGroup({
 }: FeedMatchGroupProps) {
   const [expanded, setExpanded] = useState(() => isGroupExpandedByDefault(group));
 
+  // Highlight the whole card when the claimed person owns a team in this match —
+  // matching the per-event highlight so "my games" stand out at a glance.
+  const mine = isGroupMine(group, ownersByTeam, claimedPerson);
+
   return (
-    <div className="rounded-lg bg-white/5 border border-white/10">
+    <div
+      data-testid="feed-group"
+      data-involves-claimed={mine ? 'true' : 'false'}
+      className={`rounded-lg border ${
+        mine ? 'border-sky-400/60 bg-sky-400/10' : 'border-white/10 bg-white/5'
+      }`}
+    >
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}

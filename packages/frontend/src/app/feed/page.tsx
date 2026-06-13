@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import NavBar from '@/components/NavBar';
+import Spinner from '@/components/Spinner';
 import FeedFilterTabs from '@/components/FeedFilterTabs';
 import FeedMatchGroup from '@/components/FeedMatchGroup';
 import { useGroup } from '@/hooks/GroupContext';
@@ -57,10 +58,12 @@ export default function FeedPage() {
   // when idle, visibility-aware) and each tick re-fetches the feed.
   usePollScores(matches, loadFeed);
 
-  if (loading && events.length === 0 && !group) {
+  // Show the spinner until the first feed load resolves, rather than briefly
+  // flashing the "nothing has happened yet" empty state before the events land.
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-green-200">Loading...</div>
+        <Spinner label="Loading…" />
       </div>
     );
   }
