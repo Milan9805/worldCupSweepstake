@@ -14,7 +14,7 @@ import { FeedFilter, filterFeedGroups, groupEventsByMatch } from '@/lib/feedGrou
 import { FeedEvent } from '@sweepstake/shared';
 
 export default function FeedPage() {
-  const { groupKey, group, teams, matches, claimedPerson } = useGroup();
+  const { groupKey, group, teams, matches, claimedPerson, loading: groupLoading } = useGroup();
   const [events, setEvents] = useState<FeedEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FeedFilter>('all');
@@ -58,9 +58,12 @@ export default function FeedPage() {
   // when idle, visibility-aware) and each tick re-fetches the feed.
   usePollScores(matches, loadFeed);
 
-  // Show the spinner until the first feed load resolves, rather than briefly
-  // flashing the "nothing has happened yet" empty state before the events land.
-  if (loading) {
+  // Keep the spinner up until BOTH the feed events and the shared matches have
+  // loaded. Grouping needs `matches` (from the shared GroupContext, fetched
+  // independently of the feed) — without this gate the events flash ungrouped in
+  // the "Tournament" bucket until matches arrive, then snap into their match
+  // groups. It also avoids briefly showing the empty state before events land.
+  if (loading || groupLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Spinner label="Loading…" />

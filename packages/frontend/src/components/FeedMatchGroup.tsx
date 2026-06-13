@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Team } from '@sweepstake/shared';
 import { MatchEventGroup, isGroupExpandedByDefault, isGroupMine } from '@/lib/feedGroups';
+import { relativeTime } from '@/lib/format';
 import { TeamOwner } from '@/lib/owners';
 import LiveBadge from '@/components/LiveBadge';
 import MatchScoreline from '@/components/MatchScoreline';
@@ -39,6 +40,10 @@ export default function FeedMatchGroup({
   // matching the per-event highlight so "my games" stand out at a glance.
   const mine = isGroupMine(group, ownersByTeam, claimedPerson);
 
+  // The most recent event (events are newest-first) — its relative time is shown
+  // in the header as "how long ago the last thing happened" (e.g. since full time).
+  const latest = group.events[0];
+
   return (
     <div
       data-testid="feed-group"
@@ -66,9 +71,15 @@ export default function FeedMatchGroup({
           {group.status === 'FINISHED' && (
             <span className="bg-gray-600 text-white px-2 py-0.5 rounded">FT</span>
           )}
-          <span className="text-white/50 tabular-nums" aria-hidden="true">
-            {group.events.length}
-          </span>
+          {latest && (
+            <time
+              dateTime={latest.ts}
+              data-testid="feed-group-time"
+              className="text-white/50 tabular-nums whitespace-nowrap"
+            >
+              {relativeTime(latest.ts, now)}
+            </time>
+          )}
           <svg
             className={`w-5 h-5 text-white/60 transition-transform ${expanded ? 'rotate-180' : ''}`}
             viewBox="0 0 24 24"

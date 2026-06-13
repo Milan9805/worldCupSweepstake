@@ -75,6 +75,12 @@ describe('FeedMatchGroup', () => {
     expect(header).toHaveAttribute('aria-expanded', 'true');
   });
 
+  it('shows the relative time of the latest event in the header', () => {
+    // Latest event is at 20:10; now is 20:15 -> "5m ago".
+    renderGroup(makeMatch({ status: 'FINISHED' }));
+    expect(screen.getByTestId('feed-group-time')).toHaveTextContent('5m ago');
+  });
+
   it('highlights the card when the claimed person owns a team in the match', () => {
     // Alice owns ENG (the default ENG–GER match).
     renderGroup(makeMatch({ status: 'LIVE' }));

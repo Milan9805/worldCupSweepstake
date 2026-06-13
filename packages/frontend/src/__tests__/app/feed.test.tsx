@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom';
 import React from 'react';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import FeedPage from '../../app/feed/page';
 import { getFeed } from '../../lib/api';
 
@@ -11,6 +11,7 @@ let mockGroup: Record<string, unknown> | null = null;
 let mockTeams: unknown[] = [];
 let mockMatches: unknown[] = [];
 let mockClaimedPerson: string | null = null;
+let mockGroupLoading = false;
 
 jest.mock('../../hooks/GroupContext', () => ({
   useGroup: () => ({
@@ -19,6 +20,7 @@ jest.mock('../../hooks/GroupContext', () => ({
     teams: mockTeams,
     matches: mockMatches,
     claimedPerson: mockClaimedPerson,
+    loading: mockGroupLoading,
   }),
 }));
 
@@ -73,6 +75,7 @@ describe('FeedPage', () => {
     mockTeams = TEAMS;
     mockMatches = [];
     mockClaimedPerson = 'Alice';
+    mockGroupLoading = false;
     mockLocalStorage.getItem.mockReturnValue('test-group');
     mockGetFeed.mockResolvedValue([]);
   });
@@ -192,6 +195,26 @@ describe('FeedPage', () => {
     expect(screen.queryByText(/Nothing has happened yet/i)).not.toBeInTheDocument();
   });
 
+  it('keeps the spinner up while the shared matches are still loading', async () => {
+    // The feed itself has loaded, but the group context (which supplies matches
+    // for grouping) hasn't — without waiting, events would flash ungrouped.
+    mockGroupLoading = true;
+    mockGetFeed.mockResolvedValue([
+      {
+        eventId: 'm1#GOAL',
+        ts: new Date().toISOString(),
+        type: 'GOAL',
+        matchId: 'm1',
+        payload: { homeTeam: 'ENG', awayTeam: 'GER', homeScore: 1, awayScore: 0 },
+      },
+    ]);
+    render(<FeedPage />);
+    // Spinner stays; no group cards or events render yet.
+    await waitFor(() => expect(screen.getByRole('status')).toBeInTheDocument());
+    expect(screen.queryByTestId('feed-group')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('feed-event')).not.toBeInTheDocument();
+  });
+
   it('renders a half-time event with its label and scoreline', async () => {
     mockGetFeed.mockResolvedValue([
       {
@@ -258,7 +281,10 @@ describe('FeedPage', () => {
 
     render(<FeedPage />);
     await screen.findByText(/England/);
-    expect(screen.getByText('1h ago')).toBeInTheDocument();
+    // The event row shows the relative time (the group header also shows the
+    // latest event's time now, so scope the assertion to the row itself).
+    const row = screen.getByTestId('feed-event');
+    expect(within(row).getByText('1h ago')).toBeInTheDocument();
   });
 
   it('keeps the last good feed when a refetch fails', async () => {
