@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Team } from '@sweepstake/shared';
 import { MatchEventGroup, isGroupExpandedByDefault, isGroupMine } from '@/lib/feedGroups';
-import { relativeTime } from '@/lib/format';
+import { relativeTimeLines } from '@/lib/format';
 import { TeamOwner } from '@/lib/owners';
 import LiveBadge from '@/components/LiveBadge';
 import MatchScoreline from '@/components/MatchScoreline';
@@ -59,6 +59,11 @@ export default function FeedMatchGroup({
         data-testid="feed-group-header"
         className="w-full flex items-center gap-2 p-3 text-left rounded-lg hover:bg-white/5 transition-colors"
       >
+        {/* Empty left gutter mirrors the right column's width so the matchup sits
+            centred in the card, the same way the groups-page fixtures balance
+            their date column against the status column. */}
+        <div className="w-16 shrink-0" aria-hidden="true" />
+
         <div className="flex-1 min-w-0">
           {group.match ? (
             <MatchScoreline match={group.match} teamOwners={ownersByTeam} teamFlags={teamFlags} />
@@ -66,29 +71,38 @@ export default function FeedMatchGroup({
             <span className="text-sm font-medium">Tournament</span>
           )}
         </div>
-        <div className="shrink-0 flex items-center gap-2 text-xs">
-          {group.status === 'LIVE' && <LiveBadge minute={group.match?.minute} layout="inline" />}
-          {group.status === 'FINISHED' && (
-            <span className="bg-gray-600 text-white px-2 py-0.5 rounded">FT</span>
-          )}
+
+        {/* Status + chevron on top, the event time beneath — right-aligned in a
+            fixed-width column that mirrors the left gutter to keep it centred. */}
+        <div className="w-16 shrink-0 flex flex-col items-end gap-1 text-xs">
+          <div className="flex items-center gap-1">
+            {group.status === 'LIVE' && <LiveBadge minute={group.match?.minute} layout="stacked" />}
+            {group.status === 'FINISHED' && (
+              <span className="bg-gray-600 text-white px-2 py-0.5 rounded">FT</span>
+            )}
+            <svg
+              className={`w-5 h-5 shrink-0 text-white/60 transition-transform ${expanded ? 'rotate-180' : ''}`}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              aria-hidden="true"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
           {latest && (
             <time
               dateTime={latest.ts}
               data-testid="feed-group-time"
-              className="text-white/50 tabular-nums whitespace-nowrap"
+              className="text-white/50 tabular-nums text-right leading-tight"
             >
-              {relativeTime(latest.ts, now)}
+              {relativeTimeLines(latest.ts, now).map((line) => (
+                <span key={line} className="block whitespace-nowrap">
+                  {line}
+                </span>
+              ))}
             </time>
           )}
-          <svg
-            className={`w-5 h-5 text-white/60 transition-transform ${expanded ? 'rotate-180' : ''}`}
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            aria-hidden="true"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
         </div>
       </button>
 

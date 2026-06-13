@@ -1,4 +1,10 @@
-import { formatMatchDate, formatMatchTime, formatTimeUntil, relativeTime } from '../../lib/format';
+import {
+  formatMatchDate,
+  formatMatchTime,
+  formatTimeUntil,
+  relativeTime,
+  relativeTimeLines,
+} from '../../lib/format';
 
 describe('formatMatchDate', () => {
   it('formats an ISO datetime as a short UK date', () => {
@@ -83,5 +89,23 @@ describe('relativeTime', () => {
 
   it('returns an empty string for an unparseable timestamp', () => {
     expect(relativeTime('not-a-date', now)).toBe('');
+  });
+});
+
+describe('relativeTimeLines', () => {
+  const now = Date.parse('2026-06-12T10:00:00Z');
+  const H = 3_600_000;
+  const agoMs = (ms: number) => new Date(now - ms).toISOString();
+
+  it('keeps a recent relative label on a single line', () => {
+    expect(relativeTimeLines(agoMs(5 * 60_000), now)).toEqual(['5m ago']);
+    expect(relativeTimeLines(agoMs(2 * H), now)).toEqual(['2h ago']);
+  });
+
+  it('splits the older clock fallback into a date line and a time line', () => {
+    const lines = relativeTimeLines(agoMs(26 * H), now);
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatch(/11 Jun/);
+    expect(lines[1]).toMatch(/^\d{2}:\d{2}$/);
   });
 });
