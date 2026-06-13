@@ -23,3 +23,6 @@ next-env.d.ts
 *.jks
 *.apk
 *.aab
+
+# Environment-specific deploy tooling — kept local
+scripts/deploy.sh
