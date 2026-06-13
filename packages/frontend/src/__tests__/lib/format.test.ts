@@ -1,4 +1,4 @@
-import { formatMatchDate, formatMatchTime, formatTimeUntil } from '../../lib/format';
+import { formatMatchDate, formatMatchTime, formatTimeUntil, relativeTime } from '../../lib/format';
 
 describe('formatMatchDate', () => {
   it('formats an ISO datetime as a short UK date', () => {
@@ -52,5 +52,36 @@ describe('formatTimeUntil', () => {
 
   it('says "Kicking off…" for an unparseable datetime', () => {
     expect(formatTimeUntil('not-a-date', now)).toBe('Kicking off…');
+  });
+});
+
+describe('relativeTime', () => {
+  const now = Date.parse('2026-06-12T10:00:00Z');
+  const H = 3_600_000;
+  const M = 60_000;
+  const agoMs = (ms: number) => new Date(now - ms).toISOString();
+
+  it('says "just now" under a minute ago', () => {
+    expect(relativeTime(agoMs(30 * 1_000), now)).toBe('just now');
+  });
+
+  it('shows whole minutes under an hour ago', () => {
+    expect(relativeTime(agoMs(5 * M), now)).toBe('5m ago');
+  });
+
+  it('shows whole hours under a day ago', () => {
+    expect(relativeTime(agoMs(2 * H), now)).toBe('2h ago');
+    // 90 minutes rounds down to the hour.
+    expect(relativeTime(agoMs(90 * M), now)).toBe('1h ago');
+  });
+
+  it('falls back to a UK clock date for events older than a day', () => {
+    const label = relativeTime(agoMs(26 * H), now);
+    expect(label).not.toMatch(/ago/);
+    expect(label).toMatch(/11 Jun/);
+  });
+
+  it('returns an empty string for an unparseable timestamp', () => {
+    expect(relativeTime('not-a-date', now)).toBe('');
   });
 });

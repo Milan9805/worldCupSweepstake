@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom';
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import FeedPage from '../../app/feed/page';
 import { getFeed } from '../../lib/api';
 
@@ -9,7 +9,7 @@ const mockPush = jest.fn();
 let mockGroupKey: string | null = 'test-group';
 let mockGroup: Record<string, unknown> | null = null;
 let mockTeams: unknown[] = [];
-const mockMatches: unknown[] = [];
+let mockMatches: unknown[] = [];
 let mockClaimedPerson: string | null = null;
 
 jest.mock('../../hooks/GroupContext', () => ({
@@ -71,6 +71,7 @@ describe('FeedPage', () => {
     mockGroupKey = 'test-group';
     mockGroup = GROUP;
     mockTeams = TEAMS;
+    mockMatches = [];
     mockClaimedPerson = 'Alice';
     mockLocalStorage.getItem.mockReturnValue('test-group');
     mockGetFeed.mockResolvedValue([]);
@@ -375,5 +376,118 @@ describe('FeedPage', () => {
     mockLocalStorage.getItem.mockReturnValue(null);
     render(<FeedPage />);
     expect(mockPush).toHaveBeenCalledWith('/');
+  });
+
+  describe('grouping and filtering', () => {
+    // Alice owns ENG (the live ENG–GER match); Bob owns BRA (the finished
+    // BRA–FRA match), so only the live match is "mine".
+    const LIVE = {
+      matchId: 'mLive',
+      homeTeam: 'ENG',
+      awayTeam: 'GER',
+      homeScore: 1,
+      awayScore: 0,
+      status: 'LIVE',
+      stage: 'GROUP_STAGE',
+      group: 'A',
+      datetime: '2026-06-12T18:00:00Z',
+      venue: 'Wembley',
+      minute: "57'",
+    };
+    const FINISHED = {
+      matchId: 'mFin',
+      homeTeam: 'BRA',
+      awayTeam: 'GER',
+      homeScore: 2,
+      awayScore: 1,
+      status: 'FINISHED',
+      stage: 'GROUP_STAGE',
+      group: 'B',
+      datetime: '2026-06-12T15:00:00Z',
+      venue: 'Etihad',
+    };
+    const liveGoal = {
+      eventId: 'mLive#GOAL#home#0',
+      ts: new Date().toISOString(),
+      type: 'GOAL' as const,
+      matchId: 'mLive',
+      payload: { homeTeam: 'ENG', awayTeam: 'GER', homeScore: 1, awayScore: 0 },
+    };
+    const finishedFT = {
+      eventId: 'mFin#FULL_TIME',
+      ts: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      type: 'FULL_TIME' as const,
+      matchId: 'mFin',
+      payload: { homeTeam: 'BRA', awayTeam: 'GER', homeScore: 2, awayScore: 1, outcome: 'home' },
+    };
+
+    beforeEach(() => {
+      mockMatches = [LIVE, FINISHED];
+      mockGetFeed.mockResolvedValue([liveGoal, finishedFT]);
+    });
+
+    it('groups events by match: live expanded, finished collapsed', async () => {
+      render(<FeedPage />);
+      // Two match groups.
+      expect(await screen.findAllByTestId('feed-group-header')).toHaveLength(2);
+      // The live group shows its event; the finished group is collapsed, so only
+      // the live GOAL row is visible.
+      expect(screen.getAllByTestId('feed-event')).toHaveLength(1);
+      expect(screen.getByText('Goal')).toBeInTheDocument();
+      expect(screen.getByText('LIVE')).toBeInTheDocument();
+      expect(screen.getByText('FT')).toBeInTheDocument();
+    });
+
+    it('expands a finished group when its header is tapped', async () => {
+      render(<FeedPage />);
+      const headers = await screen.findAllByTestId('feed-group-header');
+      // Live group is first (live-first ordering); the finished group is second.
+      fireEvent.click(headers[1]);
+      expect(screen.getAllByTestId('feed-event')).toHaveLength(2);
+      expect(screen.getByText('Full time')).toBeInTheDocument();
+    });
+
+    it('defaults to "All games" and shows every group', async () => {
+      render(<FeedPage />);
+      await screen.findAllByTestId('feed-group-header');
+      expect(screen.getByRole('button', { name: 'All games' })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getAllByTestId('feed-group-header')).toHaveLength(2);
+    });
+
+    it('filters to live games only', async () => {
+      render(<FeedPage />);
+      await screen.findAllByTestId('feed-group-header');
+      fireEvent.click(screen.getByRole('button', { name: 'Live games' }));
+      const headers = screen.getAllByTestId('feed-group-header');
+      expect(headers).toHaveLength(1);
+      expect(screen.getByText('LIVE')).toBeInTheDocument();
+      expect(screen.queryByText('FT')).not.toBeInTheDocument();
+    });
+
+    it('filters to my games only', async () => {
+      render(<FeedPage />);
+      await screen.findAllByTestId('feed-group-header');
+      fireEvent.click(screen.getByRole('button', { name: 'My games' }));
+      // Alice owns ENG -> only the live ENG–GER match remains.
+      expect(screen.getAllByTestId('feed-group-header')).toHaveLength(1);
+      expect(screen.getByText('LIVE')).toBeInTheDocument();
+    });
+
+    it('shows a tailored empty state when no games are live', async () => {
+      mockMatches = [FINISHED];
+      mockGetFeed.mockResolvedValue([finishedFT]);
+      render(<FeedPage />);
+      await screen.findByTestId('feed-group-header');
+      fireEvent.click(screen.getByRole('button', { name: 'Live games' }));
+      expect(screen.getByText(/No matches are live right now/i)).toBeInTheDocument();
+    });
+
+    it('shows a tailored empty state when none of my teams are in the feed', async () => {
+      mockClaimedPerson = 'Nobody';
+      render(<FeedPage />);
+      await screen.findAllByTestId('feed-group-header');
+      fireEvent.click(screen.getByRole('button', { name: 'My games' }));
+      expect(screen.getByText(/None of your teams are in the feed yet/i)).toBeInTheDocument();
+    });
   });
 });

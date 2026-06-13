@@ -33,3 +33,24 @@ export function formatTimeUntil(datetime: string, now: number): string {
   if (minutes > 0) return `in ${minutes}m`;
   return `in ${Math.ceil(diff / 1000)}s`;
 }
+
+// Compact relative timestamp ("just now", "5m ago", "2h ago"), falling back to a
+// clock time for events older than a day. UK locale to match the rest of the app.
+// `now` is passed in (and typically ticks every minute) so labels keep advancing
+// while the page is open.
+export function relativeTime(ts: string, now: number = Date.now()): string {
+  const then = new Date(ts).getTime();
+  if (Number.isNaN(then)) return '';
+  const diffMin = Math.floor((now - then) / 60000);
+  if (diffMin < 1) return 'just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  return new Date(ts).toLocaleString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Europe/London',
+  });
+}

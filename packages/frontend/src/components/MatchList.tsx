@@ -2,8 +2,8 @@
 
 import { Match } from '@sweepstake/shared';
 import { formatMatchDate, formatMatchTime } from '@/lib/format';
-import Avatar from '@/components/Avatar';
 import LiveBadge from '@/components/LiveBadge';
+import MatchScoreline from '@/components/MatchScoreline';
 
 interface MatchListProps {
   matches: Match[];
@@ -48,47 +48,7 @@ export default function MatchList({ matches, teamOwners, teamFlags }: MatchListP
             {/* Matchup + channels share one centred column so the channels always
                 line up under the team names, whatever the status column's width. */}
             <div className="flex-1 min-w-0 flex flex-col gap-2">
-              <div className="flex items-start gap-1 min-w-0">
-                <div className="flex-1 min-w-0 text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    {teamFlags?.[match.homeTeam] && (
-                      <span className="text-base leading-none">{teamFlags[match.homeTeam]}</span>
-                    )}
-                    <span className="text-sm font-medium">{match.homeTeam}</span>
-                  </div>
-                  {teamOwners?.[match.homeTeam] && (
-                    <div className="flex items-center justify-end gap-1 min-w-0 text-[11px] text-gold/80">
-                      <Avatar name={teamOwners[match.homeTeam].name} size="sm" />
-                      <span className="truncate">({teamOwners[match.homeTeam].name})</span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="w-12 shrink-0 text-center">
-                  {match.status === 'SCHEDULED' ? (
-                    <span className="text-white/70 text-sm">vs</span>
-                  ) : (
-                    <span className="font-bold">
-                      {match.homeScore} - {match.awayScore}
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex-1 min-w-0 text-left">
-                  <div className="flex items-center gap-1">
-                    <span className="text-sm font-medium">{match.awayTeam}</span>
-                    {teamFlags?.[match.awayTeam] && (
-                      <span className="text-base leading-none">{teamFlags[match.awayTeam]}</span>
-                    )}
-                  </div>
-                  {teamOwners?.[match.awayTeam] && (
-                    <div className="flex items-center gap-1 min-w-0 text-[11px] text-gold/80">
-                      <span className="truncate">({teamOwners[match.awayTeam].name})</span>
-                      <Avatar name={teamOwners[match.awayTeam].name} size="sm" />
-                    </div>
-                  )}
-                </div>
-              </div>
+              <MatchScoreline match={match} teamOwners={teamOwners} teamFlags={teamFlags} />
 
               {match.channels && match.channels.length > 0 && (
                 <div className="flex flex-wrap gap-1 justify-center">
