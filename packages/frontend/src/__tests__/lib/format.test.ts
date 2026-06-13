@@ -102,10 +102,11 @@ describe('relativeTimeLines', () => {
     expect(relativeTimeLines(agoMs(2 * H), now)).toEqual(['2h ago']);
   });
 
-  it('splits the older clock fallback into a date line and a time line', () => {
+  it('renders the older clock fallback as a weekday date over the time, like the fixtures list', () => {
     const lines = relativeTimeLines(agoMs(26 * H), now);
     expect(lines).toHaveLength(2);
-    expect(lines[0]).toMatch(/11 Jun/);
+    // Weekday + day + month on the first line (11 Jun 2026 is a Thursday).
+    expect(lines[0]).toMatch(/^Thu 11 Jun$/);
     expect(lines[1]).toMatch(/^\d{2}:\d{2}$/);
   });
 });

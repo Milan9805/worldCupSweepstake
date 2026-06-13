@@ -74,7 +74,7 @@ export default function FeedMatchGroup({
 
         {/* Status + chevron on top, the event time beneath — right-aligned in a
             fixed-width column that mirrors the left gutter to keep it centred. */}
-        <div className="w-16 shrink-0 flex flex-col items-end gap-1 text-xs">
+        <div className="w-16 shrink-0 flex flex-col items-center gap-1 text-xs">
           <div className="flex items-center gap-1">
             {group.status === 'LIVE' && <LiveBadge minute={group.match?.minute} layout="stacked" />}
             {group.status === 'FINISHED' && (
@@ -94,7 +94,7 @@ export default function FeedMatchGroup({
             <time
               dateTime={latest.ts}
               data-testid="feed-group-time"
-              className="text-white/50 tabular-nums text-right leading-tight"
+              className="text-white/70 tabular-nums text-center leading-tight"
             >
               {relativeTimeLines(latest.ts, now).map((line) => (
                 <span key={line} className="block whitespace-nowrap">

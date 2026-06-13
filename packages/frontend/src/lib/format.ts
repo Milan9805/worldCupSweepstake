@@ -56,12 +56,12 @@ export function relativeTime(ts: string, now: number = Date.now()): string {
 }
 
 // {@link relativeTime} split into lines for a narrow column. A recent label
-// ("5m ago") stays a single line; the older clock fallback ("11 Jun, 22:04") — the
-// only form with a comma — splits into [date, time] so it can stack over two
-// lines instead of one wide row that crowds the team names on mobile.
+// ("5m ago") stays a single line; the older clock fallback is re-rendered like the
+// groups-page fixtures' date column — the weekday date ("Thu 11 Jun") over the
+// time ("22:04") — so the feed header reads the same and stays narrow on mobile.
 export function relativeTimeLines(ts: string, now: number = Date.now()): string[] {
   const label = relativeTime(ts, now);
-  const comma = label.indexOf(', ');
-  if (comma === -1) return [label];
-  return [label.slice(0, comma), label.slice(comma + 2)];
+  // Recent labels have no comma; only the clock fallback ("11 Jun, 22:04") does.
+  if (!label.includes(', ')) return [label];
+  return [formatMatchDate(ts).replace(',', ''), formatMatchTime(ts)];
 }
