@@ -9,7 +9,6 @@
  * After running, POST /api/refresh once so team stats recompute from the
  * updated matches (deriveCardCounts picks the yellows up).
  *
- * Usage (prod): IS_LOCAL=  TABLE_PREFIX=sweepstake-dev- AWS_REGION=eu-west-2 \
  *   npx ts-node --transpile-only --project scripts/tsconfig.json scripts/backfill-cards.ts
  * Preview first with DRY_RUN=1 (no writes).
  */
