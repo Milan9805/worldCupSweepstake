@@ -333,6 +333,28 @@ describe('MatchBanner', () => {
     });
   });
 
+  describe('see live feed link', () => {
+    it('renders a link to /feed in the live state', () => {
+      const live = makeMatch({
+        status: 'LIVE',
+        homeScore: 1,
+        awayScore: 0,
+        minute: "30'",
+        datetime: new Date(NOW - H).toISOString(),
+      });
+      render(<MatchBanner matches={[live]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
+      const link = screen.getByRole('link', { name: /See live feed/i });
+      expect(link).toHaveAttribute('href', '/feed');
+    });
+
+    it('renders a link to /feed in the next-only state', () => {
+      const next = makeMatch({ status: 'SCHEDULED' });
+      render(<MatchBanner matches={[next]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
+      const link = screen.getByRole('link', { name: /See live feed/i });
+      expect(link).toHaveAttribute('href', '/feed');
+    });
+  });
+
   describe('sticky positioning', () => {
     it('pins the banner directly below the nav', () => {
       const next = makeMatch({ status: 'SCHEDULED' });

@@ -44,7 +44,7 @@ export default function MatchBanner({ matches, teamsByCode, ownersByTeam }: Matc
         isLive ? 'border-red-500/40 bg-red-950/30' : 'border-white/15 bg-black/30'
       }`}
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-3 pb-1">
         {isLive ? (
           <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 sm:gap-x-8 sm:gap-y-2 max-h-[40vh] overflow-y-auto sm:max-h-none sm:overflow-visible">
             {live.map((match) => (
@@ -59,12 +59,20 @@ export default function MatchBanner({ matches, teamsByCode, ownersByTeam }: Matc
         ) : (
           <NextMatchRow match={next!} teamLabel={teamLabel} ownersByTeam={ownersByTeam} />
         )}
-        <Link
-          href="/fixtures"
-          className="mt-2 inline-flex items-center min-h-[44px] py-2 text-xs font-semibold uppercase tracking-wide text-gold hover:text-gold/80 underline underline-offset-2 transition-colors"
-        >
-          See all fixtures
-        </Link>
+        <div className="mt-2 flex items-center gap-5">
+          <Link
+            href="/fixtures"
+            className="inline-flex items-center min-h-[44px] py-2 text-xs font-semibold uppercase tracking-wide text-gold hover:text-gold/80 underline underline-offset-2 transition-colors"
+          >
+            See all fixtures
+          </Link>
+          <Link
+            href="/feed"
+            className="inline-flex items-center min-h-[44px] py-2 text-xs font-semibold uppercase tracking-wide text-gold hover:text-gold/80 underline underline-offset-2 transition-colors"
+          >
+            See live feed
+          </Link>
+        </div>
       </div>
     </div>
   );
