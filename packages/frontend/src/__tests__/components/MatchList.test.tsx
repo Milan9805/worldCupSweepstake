@@ -78,6 +78,24 @@ describe('MatchList', () => {
     expect(container).toBeInTheDocument();
   });
 
+  it('shows the group-stage label under the date when showStage is set', () => {
+    const matches = [makeMatch({ stage: 'GROUP_STAGE', group: 'A' })];
+    render(<MatchList matches={matches} showStage />);
+    expect(screen.getByText('Group A')).toBeInTheDocument();
+  });
+
+  it('shows a knockout-round label under the date when showStage is set', () => {
+    const matches = [makeMatch({ stage: 'ROUND_OF_16', group: null })];
+    render(<MatchList matches={matches} showStage />);
+    expect(screen.getByText('Round of 16')).toBeInTheDocument();
+  });
+
+  it('does not show the stage by default (other lists are already stage-scoped)', () => {
+    const matches = [makeMatch({ stage: 'GROUP_STAGE', group: 'A' })];
+    render(<MatchList matches={matches} />);
+    expect(screen.queryByText('Group A')).not.toBeInTheDocument();
+  });
+
   it('shows the team owner name in brackets when teamOwners provided', () => {
     const matches = [makeMatch({ homeTeam: 'ENG' })];
     const teamOwners = { ENG: { name: 'Alice', imageUrl: null } };

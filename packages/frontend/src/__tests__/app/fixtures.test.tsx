@@ -218,6 +218,13 @@ describe('FixturesPage', () => {
     expect(dates[2]).toHaveTextContent(dateLabel(M_LATE.datetime));
   });
 
+  it('shows the stage under the date for each fixture', () => {
+    render(<FixturesPage />);
+    // M1 + M2 are group stage (Group A); M3 is Round of 16.
+    expect(screen.getAllByText('Group A')).toHaveLength(2);
+    expect(screen.getByText('Round of 16')).toBeInTheDocument();
+  });
+
   it('renders the team filter dropdown only in the All view, with only teams that have fixtures', () => {
     render(<FixturesPage />);
     const select = screen.getByTestId('team-filter');

@@ -70,6 +70,9 @@ export default function MatchBanner({ matches, teamsByCode, ownersByTeam }: Matc
   );
 }
 
+// One live match. On a phone it's a tidy two-line block (badge + stage, then
+// teams + score); on sm+ it collapses back to a single inline row. Tight gaps /
+// leading-tight keep each block short so several stacked live games stay compact.
 function LiveMatchRow({
   match,
   teamLabel,
@@ -80,18 +83,22 @@ function LiveMatchRow({
   ownersByTeam: Record<string, Owner>;
 }) {
   return (
-    <div className="flex items-center gap-1.5 sm:gap-2 text-sm sm:text-base flex-wrap">
-      <LiveBadge minute={match.minute} layout="inline" />
-      <span className="text-red-200 uppercase tracking-wide text-[11px] font-semibold shrink-0">
-        ({formatStage(match)})
-      </span>
-      <span className="font-semibold text-white">{teamLabel(match.homeTeam)}</span>
-      <OwnerTag owner={ownersByTeam[match.homeTeam] ?? null} />
-      <span className="font-bold text-white tabular-nums">
-        {match.homeScore ?? 0} - {match.awayScore ?? 0}
-      </span>
-      <span className="font-semibold text-white">{teamLabel(match.awayTeam)}</span>
-      <OwnerTag owner={ownersByTeam[match.awayTeam] ?? null} />
+    <div className="flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-2 text-sm sm:text-base leading-tight">
+      <div className="flex items-center gap-1.5 shrink-0">
+        <LiveBadge minute={match.minute} layout="inline" />
+        <span className="text-red-200 uppercase tracking-wide text-[11px] font-semibold shrink-0">
+          ({formatStage(match)})
+        </span>
+      </div>
+      <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+        <span className="font-semibold text-white">{teamLabel(match.homeTeam)}</span>
+        <OwnerTag owner={ownersByTeam[match.homeTeam] ?? null} />
+        <span className="font-bold text-white tabular-nums">
+          {match.homeScore ?? 0} - {match.awayScore ?? 0}
+        </span>
+        <span className="font-semibold text-white">{teamLabel(match.awayTeam)}</span>
+        <OwnerTag owner={ownersByTeam[match.awayTeam] ?? null} />
+      </div>
     </div>
   );
 }
@@ -108,25 +115,33 @@ function NextMatchRow({
   // Tick the countdown once a second. Mounted only when a next match is shown.
   const now = useNow();
 
+  // On a phone this reads as clean, tightly-spaced lines — label / matchup /
+  // times / channels — so nothing wraps into the middle of the matchup. On sm+
+  // it regroups into the original two horizontal clusters (label+matchup,
+  // times+channels) so the desktop layout is unchanged.
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-      <div className="flex items-center gap-1.5 sm:gap-2 text-sm sm:text-base flex-wrap">
+    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4 leading-tight">
+      <div className="flex flex-col gap-0.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2 sm:gap-y-1">
         <span className="text-white/60 uppercase tracking-wide text-[11px] font-semibold shrink-0">
           Next up ({formatStage(match)})
         </span>
-        <span className="font-semibold text-white">{teamLabel(match.homeTeam)}</span>
-        <OwnerTag owner={ownersByTeam[match.homeTeam] ?? null} />
-        <span className="text-white/60">vs</span>
-        <span className="font-semibold text-white">{teamLabel(match.awayTeam)}</span>
-        <OwnerTag owner={ownersByTeam[match.awayTeam] ?? null} />
+        <div className="flex items-center gap-1.5 sm:gap-2 text-sm sm:text-base flex-wrap">
+          <span className="font-semibold text-white">{teamLabel(match.homeTeam)}</span>
+          <OwnerTag owner={ownersByTeam[match.homeTeam] ?? null} />
+          <span className="text-white/60">vs</span>
+          <span className="font-semibold text-white">{teamLabel(match.awayTeam)}</span>
+          <OwnerTag owner={ownersByTeam[match.awayTeam] ?? null} />
+        </div>
       </div>
-      <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm flex-wrap">
-        <span className="text-gold font-semibold whitespace-nowrap">
-          {formatTimeUntil(match.datetime, now)}
-        </span>
-        <span className="text-white/70 whitespace-nowrap">
-          {formatMatchDate(match.datetime)}, {formatMatchTime(match.datetime)}
-        </span>
+      <div className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-3 text-xs sm:text-sm">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+          <span className="text-gold font-semibold whitespace-nowrap">
+            {formatTimeUntil(match.datetime, now)}
+          </span>
+          <span className="text-white/70 whitespace-nowrap">
+            {formatMatchDate(match.datetime)}, {formatMatchTime(match.datetime)}
+          </span>
+        </div>
         <ChannelPills channels={match.channels} />
       </div>
     </div>

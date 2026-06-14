@@ -120,6 +120,13 @@ describe('MatchBanner', () => {
       expect(screen.getByText(/Next up \(Round of 16\)/i)).toBeInTheDocument();
     });
 
+    it('renders the label, matchup and times together (clean line stack)', () => {
+      render(<MatchBanner matches={[next]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
+      expect(screen.getByText(/Next up \(Group E\)/i)).toBeInTheDocument(); // label line
+      expect(screen.getByText('🇩🇪 GER')).toBeInTheDocument(); // matchup line
+      expect(screen.getByText('in 2h 15m')).toBeInTheDocument(); // times line
+    });
+
     it('shows both teams with flags', () => {
       render(<MatchBanner matches={[next]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
       expect(screen.getByText('🇩🇪 GER')).toBeInTheDocument();
@@ -294,6 +301,13 @@ describe('MatchBanner', () => {
       render(<MatchBanner matches={[groupGame, semi]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
       expect(screen.getByText('(Group E)')).toBeInTheDocument();
       expect(screen.getByText('(Semi Final)')).toBeInTheDocument();
+    });
+
+    it('renders the badge, stage and score together for a live match', () => {
+      render(<MatchBanner matches={[liveA]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
+      expect(screen.getByText('LIVE')).toBeInTheDocument(); // badge line
+      expect(screen.getByText('(Group E)')).toBeInTheDocument(); // stage on the badge line
+      expect(screen.getByText('2 - 1')).toBeInTheDocument(); // matchup/score line
     });
   });
 

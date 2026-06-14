@@ -1,7 +1,7 @@
 'use client';
 
 import { Match } from '@sweepstake/shared';
-import { formatMatchDate, formatMatchTime } from '@/lib/format';
+import { formatMatchDate, formatMatchTime, formatStage } from '@/lib/format';
 import LiveBadge from '@/components/LiveBadge';
 import MatchScoreline from '@/components/MatchScoreline';
 
@@ -9,13 +9,17 @@ interface MatchListProps {
   matches: Match[];
   teamOwners?: Record<string, { name: string; imageUrl: string | null }>;
   teamFlags?: Record<string, string>;
+  // Show the tournament stage ("Group E", "Round of 16") under the date. Off by
+  // default — the groups/tree/bracket lists are already scoped to one stage, so
+  // it's only useful on the all-fixtures list.
+  showStage?: boolean;
 }
 
 // Fallbacks for when the source omits a channel's colours.
 const DEFAULT_CHANNEL_BG = '#374151';
 const DEFAULT_CHANNEL_FG = '#ffffff';
 
-export default function MatchList({ matches, teamOwners, teamFlags }: MatchListProps) {
+export default function MatchList({ matches, teamOwners, teamFlags, showStage }: MatchListProps) {
   const statusBadge = (match: Match) => {
     switch (match.status) {
       case 'LIVE':
@@ -43,6 +47,9 @@ export default function MatchList({ matches, teamOwners, teamFlags }: MatchListP
             <div className="w-16 shrink-0 text-center text-xs leading-tight text-white/70">
               <div className="whitespace-nowrap">{formatMatchDate(match.datetime).replace(',', '')}</div>
               <div>{formatMatchTime(match.datetime)}</div>
+              {showStage && (
+                <div className="mt-0.5 text-[10px] leading-tight text-white/50">{formatStage(match)}</div>
+              )}
             </div>
 
             {/* Matchup + channels share one centred column so the channels always

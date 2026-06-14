@@ -108,7 +108,7 @@ export default function FixturesPage() {
             {fixturesEmptyMessage(matches.length, filter, selectedTeamCode)}
           </div>
         ) : (
-          <MatchList matches={visible} teamOwners={ownersByTeam} teamFlags={teamFlags} />
+          <MatchList matches={visible} teamOwners={ownersByTeam} teamFlags={teamFlags} showStage />
         )}
       </div>
     </div>
