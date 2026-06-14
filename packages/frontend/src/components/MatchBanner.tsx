@@ -90,7 +90,7 @@ function LiveMatchRow({
           ({formatStage(match)})
         </span>
       </div>
-      <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+      <div className="flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 flex-wrap">
         <span className="font-semibold text-white">{teamLabel(match.homeTeam)}</span>
         <OwnerTag owner={ownersByTeam[match.homeTeam] ?? null} />
         <span className="font-bold text-white tabular-nums">
@@ -125,7 +125,7 @@ function NextMatchRow({
         <span className="text-white/60 uppercase tracking-wide text-[11px] font-semibold shrink-0">
           Next up ({formatStage(match)})
         </span>
-        <div className="flex items-center gap-1.5 sm:gap-2 text-sm sm:text-base flex-wrap">
+        <div className="flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 text-sm sm:text-base flex-wrap">
           <span className="font-semibold text-white">{teamLabel(match.homeTeam)}</span>
           <OwnerTag owner={ownersByTeam[match.homeTeam] ?? null} />
           <span className="text-white/60">vs</span>
@@ -134,7 +134,7 @@ function NextMatchRow({
         </div>
       </div>
       <div className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-3 text-xs sm:text-sm">
-        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+        <div className="flex items-center justify-center sm:justify-start gap-2 sm:gap-3 flex-wrap">
           <span className="text-gold font-semibold whitespace-nowrap">
             {formatTimeUntil(match.datetime, now)}
           </span>

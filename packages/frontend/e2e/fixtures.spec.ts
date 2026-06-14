@@ -130,6 +130,21 @@ test.describe('Match banner — mobile line stack', () => {
     // Both teams sit on the SAME line — the matchup no longer wraps mid-way.
     expect(Math.abs(homeY - awayY)).toBeLessThan(8);
 
+    // The team line and the countdown line are horizontally centred (matching the
+    // channel pills); the label and the link deliberately stay left-aligned.
+    const bannerBox = await banner.boundingBox();
+    const bannerCx = bannerBox!.x + bannerBox!.width / 2;
+    const centerX = async (loc: Locator) => {
+      const b = await loc.boundingBox();
+      return b!.x + b!.width / 2;
+    };
+    expect(Math.abs((await centerX(home.locator('..'))) - bannerCx)).toBeLessThan(16); // team line
+    expect(Math.abs((await centerX(banner.locator('.text-gold').first().locator('..'))) - bannerCx)).toBeLessThan(16); // times line
+    const labelBox = await label.boundingBox();
+    expect(labelBox!.x).toBeLessThan(bannerBox!.x + 28); // label stays left
+    const seeAllBox = await seeAll.boundingBox();
+    expect(seeAllBox!.x).toBeLessThan(bannerBox!.x + 28); // link stays left
+
     // Tight spacing keeps the whole strip compact (not a tall column).
     const box = await banner.boundingBox();
     expect(box!.height).toBeLessThan(240);
