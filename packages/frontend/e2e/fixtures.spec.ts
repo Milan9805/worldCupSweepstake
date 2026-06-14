@@ -113,11 +113,11 @@ test.describe('Match banner — mobile line stack', () => {
     const away = page.getByText('🇦🇷 ARG');
     const channel = page.getByText('ITV1').first(); // banner pill (also in the list below)
     const seeAll = page.getByRole('link', { name: /see all fixtures/i });
-    const seeFeed = page.getByRole('link', { name: /see live feed/i });
 
     await expect(label).toBeVisible();
     await expect(seeAll).toHaveAttribute('href', '/fixtures');
-    await expect(seeFeed).toHaveAttribute('href', '/feed');
+    // No live game in this set, so the feed link is hidden.
+    await expect(page.getByRole('link', { name: /see live feed/i })).toHaveCount(0);
 
     const [labelY, homeY, awayY, channelY, seeAllY] = await Promise.all(
       [label, home, away, channel, seeAll].map(topOf),
@@ -161,6 +161,8 @@ test.describe('Match banner — mobile line stack', () => {
     await expect(banner.getByText('LIVE', { exact: true })).toBeVisible();
     await expect(banner.getByText('(Group B)')).toBeVisible();
     await expect(banner.getByText('2 - 1')).toBeVisible();
+    // A live game is on, so the feed link is offered.
+    await expect(banner.getByRole('link', { name: /see live feed/i })).toHaveAttribute('href', '/feed');
 
     const before = await topOf(banner);
     await page.evaluate(() => window.scrollTo(0, 1200));

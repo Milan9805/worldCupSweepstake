@@ -347,11 +347,10 @@ describe('MatchBanner', () => {
       expect(link).toHaveAttribute('href', '/feed');
     });
 
-    it('renders a link to /feed in the next-only state', () => {
+    it('hides the feed link in the next-only state (nothing live to watch)', () => {
       const next = makeMatch({ status: 'SCHEDULED' });
       render(<MatchBanner matches={[next]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
-      const link = screen.getByRole('link', { name: /See live feed/i });
-      expect(link).toHaveAttribute('href', '/feed');
+      expect(screen.queryByRole('link', { name: /See live feed/i })).not.toBeInTheDocument();
     });
   });
 

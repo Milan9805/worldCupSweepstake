@@ -60,17 +60,19 @@ export default function MatchBanner({ matches, teamsByCode, ownersByTeam }: Matc
           <NextMatchRow match={next!} teamLabel={teamLabel} ownersByTeam={ownersByTeam} />
         )}
         <div className="mt-2 flex items-center gap-5">
+          {isLive && (
+            <Link
+              href="/feed"
+              className="inline-flex items-center min-h-[44px] py-2 text-xs font-semibold uppercase tracking-wide text-gold hover:text-gold/80 underline underline-offset-2 transition-colors"
+            >
+              See live feed
+            </Link>
+          )}
           <Link
             href="/fixtures"
             className="inline-flex items-center min-h-[44px] py-2 text-xs font-semibold uppercase tracking-wide text-gold hover:text-gold/80 underline underline-offset-2 transition-colors"
           >
             See all fixtures
-          </Link>
-          <Link
-            href="/feed"
-            className="inline-flex items-center min-h-[44px] py-2 text-xs font-semibold uppercase tracking-wide text-gold hover:text-gold/80 underline underline-offset-2 transition-colors"
-          >
-            See live feed
           </Link>
         </div>
       </div>
