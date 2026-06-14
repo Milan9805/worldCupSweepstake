@@ -1,6 +1,7 @@
 'use client';
 
 import { FeedFilter } from '@/lib/feedGroups';
+import FilterTabs from './FilterTabs';
 
 const TABS: { value: FeedFilter; label: string }[] = [
   { value: 'all', label: 'All games' },
@@ -20,26 +21,5 @@ interface FeedFilterTabsProps {
  * short labels sit in a row on a phone, wrapping only as a safety net.
  */
 export default function FeedFilterTabs({ value, onChange }: FeedFilterTabsProps) {
-  return (
-    <div className="flex flex-wrap gap-2 mb-6" role="group" aria-label="Filter the feed">
-      {TABS.map((tab) => {
-        const active = value === tab.value;
-        return (
-          <button
-            key={tab.value}
-            type="button"
-            aria-pressed={active}
-            onClick={() => onChange(tab.value)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-              active
-                ? 'bg-accent text-white'
-                : 'bg-black/30 text-white hover:bg-black/40'
-            }`}
-          >
-            {tab.label}
-          </button>
-        );
-      })}
-    </div>
-  );
+  return <FilterTabs tabs={TABS} value={value} onChange={onChange} ariaLabel="Filter the feed" />;
 }

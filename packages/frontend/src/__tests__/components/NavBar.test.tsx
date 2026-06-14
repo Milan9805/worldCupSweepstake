@@ -141,6 +141,23 @@ describe('NavBar', () => {
     expect(groupsLink).toHaveAttribute('href', '/groups');
   });
 
+  it('renders a Fixtures link pointing to /fixtures', () => {
+    render(<NavBar />);
+    const fixturesLink = screen.getAllByText('Fixtures')[0].closest('a');
+    expect(fixturesLink).toHaveAttribute('href', '/fixtures');
+  });
+
+  it('orders the Fixtures link immediately after Feed', () => {
+    render(<NavBar />);
+    // Inspect the desktop nav (first set of links) and assert Fixtures follows Feed.
+    const labels = screen
+      .getAllByRole('link')
+      .map((link) => link.textContent);
+    const feedIndex = labels.indexOf('Feed');
+    expect(feedIndex).toBeGreaterThanOrEqual(0);
+    expect(labels[feedIndex + 1]).toBe('Fixtures');
+  });
+
   it('logo links to / when no group is active', () => {
     render(<NavBar />);
     expect(screen.getByText(/WC2026/).closest('a')).toHaveAttribute('href', '/');

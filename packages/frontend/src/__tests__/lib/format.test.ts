@@ -1,6 +1,8 @@
+import { Match } from '@sweepstake/shared';
 import {
   formatMatchDate,
   formatMatchTime,
+  formatStage,
   formatTimeUntil,
   relativeTime,
   relativeTimeLines,
@@ -108,5 +110,46 @@ describe('relativeTimeLines', () => {
     // Weekday + day + month on the first line (11 Jun 2026 is a Thursday).
     expect(lines[0]).toMatch(/^Thu 11 Jun$/);
     expect(lines[1]).toMatch(/^\d{2}:\d{2}$/);
+  });
+});
+
+describe('formatStage', () => {
+  // Minimal Match: only `stage` and `group` drive formatStage, so the rest are
+  // dummy values just to satisfy the type.
+  const match = (stage: string, group: string | null = null): Match => ({
+    matchId: 'm1',
+    homeTeam: 'ENG',
+    awayTeam: 'FRA',
+    homeScore: null,
+    awayScore: null,
+    status: 'SCHEDULED',
+    stage,
+    group,
+    datetime: '2026-06-14T18:00:00Z',
+    venue: 'Wembley',
+  });
+
+  it('shows the group letter for a group-stage match', () => {
+    expect(formatStage(match('GROUP_STAGE', 'A'))).toBe('Group A');
+  });
+
+  it('falls back to a bare "Group" when the group letter is missing', () => {
+    expect(formatStage(match('GROUP_STAGE', null))).toBe('Group');
+  });
+
+  it('uses the singular knockout-round labels', () => {
+    expect(formatStage(match('ROUND_OF_32'))).toBe('Round of 32');
+    expect(formatStage(match('ROUND_OF_16'))).toBe('Round of 16');
+    expect(formatStage(match('QUARTER_FINAL'))).toBe('Quarter Final');
+    expect(formatStage(match('SEMI_FINAL'))).toBe('Semi Final');
+    expect(formatStage(match('FINAL'))).toBe('Final');
+  });
+
+  it('title-cases an unknown stage as a fallback', () => {
+    expect(formatStage(match('THIRD_PLACE'))).toBe('Third Place');
+  });
+
+  it('does not throw on an empty stage string', () => {
+    expect(formatStage(match(''))).toBe('');
   });
 });

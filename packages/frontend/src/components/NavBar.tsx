@@ -16,6 +16,7 @@ interface NavBarProps {
 const NAV_LINKS = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/feed', label: 'Feed' },
+  { href: '/fixtures', label: 'Fixtures' },
   { href: '/groups', label: 'Groups' },
   { href: '/tree', label: 'Tree' },
   { href: '/honours', label: 'Honours' },
@@ -134,9 +135,10 @@ export default function NavBar({ groupName }: NavBarProps) {
         )}
       </div>
     </nav>
-    {/* Live/next-match strip on every page with a nav. Deliberately outside the
-        sticky <nav> so it scrolls away with the page; renders null when nothing
-        is live or upcoming, keeping pre-auth pages clean. */}
+    {/* Live/next-match strip on every page with a nav. Sticks directly below the
+        sticky <nav> (top-16, z-40) so it stays pinned under it as the page
+        scrolls; renders null when nothing is live or upcoming, keeping pre-auth
+        pages clean. */}
     <MatchBanner
       matches={matches}
       teamsByCode={buildTeamsByCode(teams)}

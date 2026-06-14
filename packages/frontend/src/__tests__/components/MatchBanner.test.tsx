@@ -4,6 +4,13 @@ import { render, screen, act } from '@testing-library/react';
 import MatchBanner from '../../components/MatchBanner';
 import { Match, Team } from '@sweepstake/shared';
 
+// Mock next/link so <Link> renders a plain <a href> under jsdom.
+jest.mock('next/link', () => {
+  return ({ href, children, ...props }: { href: string; children: React.ReactNode }) => (
+    <a href={href} {...props}>{children}</a>
+  );
+});
+
 const NOW = Date.parse('2026-06-12T10:00:00Z');
 const H = 3_600_000;
 const M = 60_000;
@@ -99,6 +106,18 @@ describe('MatchBanner', () => {
     it('labels the soonest upcoming fixture as "Next up"', () => {
       render(<MatchBanner matches={[next]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
       expect(screen.getByText(/Next up/i)).toBeInTheDocument();
+    });
+
+    it('includes the group-stage label in the "Next up" caption', () => {
+      const groupE = makeMatch({ status: 'SCHEDULED', stage: 'GROUP_STAGE', group: 'E' });
+      render(<MatchBanner matches={[groupE]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
+      expect(screen.getByText(/Next up \(Group E\)/i)).toBeInTheDocument();
+    });
+
+    it('includes the knockout-round label in the "Next up" caption', () => {
+      const roundOf16 = makeMatch({ status: 'SCHEDULED', stage: 'ROUND_OF_16', group: null });
+      render(<MatchBanner matches={[roundOf16]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
+      expect(screen.getByText(/Next up \(Round of 16\)/i)).toBeInTheDocument();
     });
 
     it('shows both teams with flags', () => {
@@ -244,6 +263,68 @@ describe('MatchBanner', () => {
       );
       expect(screen.getByText('LIVE')).toBeInTheDocument();
       expect(screen.queryByText(/Next up/i)).not.toBeInTheDocument();
+    });
+
+    it('shows the stage label beside the LIVE badge', () => {
+      render(<MatchBanner matches={[liveA]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
+      expect(screen.getByText('(Group E)')).toBeInTheDocument();
+    });
+
+    it('shows each live match its own stage label', () => {
+      const groupGame = makeMatch({
+        matchId: 'g',
+        homeTeam: 'GER',
+        awayTeam: 'FRA',
+        status: 'LIVE',
+        stage: 'GROUP_STAGE',
+        group: 'E',
+        minute: "67'",
+        datetime: new Date(NOW - H).toISOString(),
+      });
+      const semi = makeMatch({
+        matchId: 'sf',
+        homeTeam: 'BRA',
+        awayTeam: 'ARG',
+        status: 'LIVE',
+        stage: 'SEMI_FINAL',
+        group: null,
+        minute: "40'",
+        datetime: new Date(NOW - 30 * M).toISOString(),
+      });
+      render(<MatchBanner matches={[groupGame, semi]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
+      expect(screen.getByText('(Group E)')).toBeInTheDocument();
+      expect(screen.getByText('(Semi Final)')).toBeInTheDocument();
+    });
+  });
+
+  describe('see all fixtures link', () => {
+    it('renders a link to /fixtures in the live state', () => {
+      const live = makeMatch({
+        status: 'LIVE',
+        homeScore: 1,
+        awayScore: 0,
+        minute: "30'",
+        datetime: new Date(NOW - H).toISOString(),
+      });
+      render(<MatchBanner matches={[live]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
+      const link = screen.getByRole('link', { name: /See all fixtures/i });
+      expect(link).toHaveAttribute('href', '/fixtures');
+    });
+
+    it('renders a link to /fixtures in the next-only state', () => {
+      const next = makeMatch({ status: 'SCHEDULED' });
+      render(<MatchBanner matches={[next]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
+      const link = screen.getByRole('link', { name: /See all fixtures/i });
+      expect(link).toHaveAttribute('href', '/fixtures');
+    });
+  });
+
+  describe('sticky positioning', () => {
+    it('pins the banner directly below the nav', () => {
+      const next = makeMatch({ status: 'SCHEDULED' });
+      render(<MatchBanner matches={[next]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
+      const banner = screen.getByTestId('match-banner');
+      expect(banner).toHaveClass('sticky', 'top-16', 'z-40');
     });
   });
 });

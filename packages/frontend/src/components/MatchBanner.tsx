@@ -1,8 +1,9 @@
 'use client';
 
+import Link from 'next/link';
 import { Match, Team } from '@sweepstake/shared';
 import { getTournamentMatchInfo } from '@/lib/teamMatches';
-import { formatMatchDate, formatMatchTime, formatTimeUntil } from '@/lib/format';
+import { formatMatchDate, formatMatchTime, formatTimeUntil, formatStage } from '@/lib/format';
 import { useNow } from '@/hooks/useNow';
 import LiveBadge from '@/components/LiveBadge';
 import ChannelPills from '@/components/ChannelPills';
@@ -35,13 +36,17 @@ export default function MatchBanner({ matches, teamsByCode, ownersByTeam }: Matc
 
   return (
     <div
-      className={`border-b ${
+      data-testid="match-banner"
+      // `top-16` is hard-coupled to the NavBar's `h-16` (64px) so the banner
+      // pins flush beneath it; `z-40` < the nav's `z-50` so an open mobile menu
+      // (which expands inside <nav>) paints over the banner rather than under it.
+      className={`sticky top-16 z-40 backdrop-blur-sm border-b ${
         isLive ? 'border-red-500/40 bg-red-950/30' : 'border-white/15 bg-black/30'
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
         {isLive ? (
-          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 sm:gap-x-8 sm:gap-y-2">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 sm:gap-x-8 sm:gap-y-2 max-h-[40vh] overflow-y-auto sm:max-h-none sm:overflow-visible">
             {live.map((match) => (
               <LiveMatchRow
                 key={match.matchId}
@@ -54,6 +59,12 @@ export default function MatchBanner({ matches, teamsByCode, ownersByTeam }: Matc
         ) : (
           <NextMatchRow match={next!} teamLabel={teamLabel} ownersByTeam={ownersByTeam} />
         )}
+        <Link
+          href="/fixtures"
+          className="mt-2 inline-flex items-center min-h-[44px] py-2 text-xs font-semibold uppercase tracking-wide text-gold hover:text-gold/80 underline underline-offset-2 transition-colors"
+        >
+          See all fixtures
+        </Link>
       </div>
     </div>
   );
@@ -71,6 +82,9 @@ function LiveMatchRow({
   return (
     <div className="flex items-center gap-1.5 sm:gap-2 text-sm sm:text-base flex-wrap">
       <LiveBadge minute={match.minute} layout="inline" />
+      <span className="text-red-200 uppercase tracking-wide text-[11px] font-semibold shrink-0">
+        ({formatStage(match)})
+      </span>
       <span className="font-semibold text-white">{teamLabel(match.homeTeam)}</span>
       <OwnerTag owner={ownersByTeam[match.homeTeam] ?? null} />
       <span className="font-bold text-white tabular-nums">
@@ -98,7 +112,7 @@ function NextMatchRow({
     <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
       <div className="flex items-center gap-1.5 sm:gap-2 text-sm sm:text-base flex-wrap">
         <span className="text-white/60 uppercase tracking-wide text-[11px] font-semibold shrink-0">
-          Next up
+          Next up ({formatStage(match)})
         </span>
         <span className="font-semibold text-white">{teamLabel(match.homeTeam)}</span>
         <OwnerTag owner={ownersByTeam[match.homeTeam] ?? null} />

@@ -1,3 +1,5 @@
+import { Match } from '@sweepstake/shared';
+
 // Shared date/time formatters for fixtures. UK locale + timezone so the
 // whole app shows kick-off times the way the sweepstake group expects.
 
@@ -64,4 +66,23 @@ export function relativeTimeLines(ts: string, now: number = Date.now()): string[
   // Recent labels have no comma; only the clock fallback ("11 Jun, 22:04") does.
   if (!label.includes(', ')) return [label];
   return [formatMatchDate(ts).replace(',', ''), formatMatchTime(ts)];
+}
+
+// Human-friendly label for a match's stage. Group-stage matches show their group
+// letter ("Group A"); knockout rounds use the singular labels below. Any unknown
+// stage falls back to a title-cased version of the raw enum ("THIRD_PLACE" →
+// "Third Place") so a new round still renders sensibly before we map it here.
+const STAGE_LABELS: Record<string, string> = {
+  ROUND_OF_32: 'Round of 32',
+  ROUND_OF_16: 'Round of 16',
+  QUARTER_FINAL: 'Quarter Final',
+  SEMI_FINAL: 'Semi Final',
+  FINAL: 'Final',
+};
+
+export function formatStage(match: Match): string {
+  if (match.stage === 'GROUP_STAGE') return match.group ? `Group ${match.group}` : 'Group';
+  return STAGE_LABELS[match.stage]
+    // charAt(0) (not [0]) so an empty/odd stage string title-cases to '' rather than throwing.
+    ?? match.stage.toLowerCase().split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
