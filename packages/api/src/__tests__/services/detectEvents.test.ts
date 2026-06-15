@@ -172,6 +172,14 @@ describe('detectEvents', () => {
         payload: { homeTeam: 'ENG', awayTeam: 'BRA' },
       });
     });
+
+    it('anchors the kickoff occurredAt to the match datetime, not detection time', () => {
+      const existing = makeMatch({ status: 'SCHEDULED' });
+      const merged = makeMatch({ status: 'LIVE', datetime: '2026-06-14T18:00:00Z' });
+
+      const kickoff = detectEvents(existing, merged, NO_TEAMS).find((e) => e.type === 'KICKOFF');
+      expect(kickoff?.payload.occurredAt).toBe('2026-06-14T18:00:00.000Z');
+    });
   });
 
   describe('HALF_TIME', () => {
@@ -580,6 +588,129 @@ describe('detectEvents', () => {
       expect(goal?.eventId).toBe('m1#GOAL#home#0');
       expect(goal?.payload).not.toHaveProperty('scorer');
       expect(goal?.payload).not.toHaveProperty('scorerMinute');
+    });
+  });
+
+  describe('GOAL running scoreline + occurredAt', () => {
+    it('stamps each goal with its running scoreline when a batch lands in one poll', () => {
+      // The SWE–TUN shape: a whole match's goals (both sides) caught in a single
+      // detect, with their actions. Each goal must read its own scoreline, not the
+      // final 5–1, and order correctly via occurredAt (kickoff + clock minute).
+      const merged = makeMatch({
+        status: 'FINISHED',
+        homeScore: 5,
+        awayScore: 1,
+        actions: [
+          { team: 'ENG', player: 'A', type: 'GOAL', minute: "7'" },
+          { team: 'ENG', player: 'B', type: 'GOAL', minute: "43'" },
+          { team: 'ENG', player: 'C', type: 'GOAL', minute: "59'" },
+          { team: 'ENG', player: 'D', type: 'GOAL', minute: "84'" },
+          { team: 'ENG', player: 'E', type: 'GOAL', minute: "90'+6" },
+          { team: 'BRA', player: 'Z', type: 'GOAL', minute: "30'" },
+        ],
+      });
+
+      const goals = detectEvents(undefined, merged, NO_TEAMS).filter((e) => e.type === 'GOAL');
+      const byId = new Map(goals.map((g) => [g.eventId, g]));
+
+      // Running scorelines, NOT the final 5–1.
+      expect(byId.get('m1#GOAL#home#0')?.payload).toMatchObject({ homeScore: 1, awayScore: 0 });
+      expect(byId.get('m1#GOAL#away#0')?.payload).toMatchObject({ homeScore: 1, awayScore: 1 });
+      expect(byId.get('m1#GOAL#home#1')?.payload).toMatchObject({ homeScore: 2, awayScore: 1 });
+      expect(byId.get('m1#GOAL#home#2')?.payload).toMatchObject({ homeScore: 3, awayScore: 1 });
+      expect(byId.get('m1#GOAL#home#3')?.payload).toMatchObject({ homeScore: 4, awayScore: 1 });
+      expect(byId.get('m1#GOAL#home#4')?.payload).toMatchObject({ homeScore: 5, awayScore: 1 });
+
+      // occurredAt back-dates to the match clock (kickoff 18:00; 2nd-half +15 break).
+      expect(byId.get('m1#GOAL#home#0')?.payload.occurredAt).toBe('2026-06-14T18:07:00.000Z');
+      expect(byId.get('m1#GOAL#away#0')?.payload.occurredAt).toBe('2026-06-14T18:30:00.000Z');
+      expect(byId.get('m1#GOAL#home#1')?.payload.occurredAt).toBe('2026-06-14T18:43:00.000Z');
+      expect(byId.get('m1#GOAL#home#2')?.payload.occurredAt).toBe('2026-06-14T19:14:00.000Z');
+      expect(byId.get('m1#GOAL#home#4')?.payload.occurredAt).toBe('2026-06-14T19:51:00.000Z');
+    });
+
+    it('derives the scoreline from each goal minute when actions are out of order', () => {
+      // BBC lists a side's goals out of chronological order (real data): home
+      // actions stored 7', 90'+6', 30', 59', 84'. Each row's scoreline must match
+      // its OWN minute, not its array position.
+      const merged = makeMatch({
+        status: 'FINISHED',
+        homeScore: 5,
+        awayScore: 1,
+        actions: [
+          { team: 'ENG', player: 'A', type: 'GOAL', minute: "7'" },
+          { team: 'ENG', player: 'B', type: 'GOAL', minute: "90'+6" },
+          { team: 'ENG', player: 'C', type: 'GOAL', minute: "30'" },
+          { team: 'ENG', player: 'D', type: 'GOAL', minute: "59'" },
+          { team: 'ENG', player: 'E', type: 'GOAL', minute: "84'" },
+          { team: 'BRA', player: 'Z', type: 'GOAL', minute: "43'" },
+        ],
+      });
+
+      const goals = detectEvents(undefined, merged, NO_TEAMS).filter((e) => e.type === 'GOAL');
+      const byId = new Map(goals.map((g) => [g.eventId, g]));
+
+      // index 1 is the 90'+6' goal -> the final 5–1, NOT 2–1.
+      expect(byId.get('m1#GOAL#home#1')?.payload).toMatchObject({ homeScore: 5, awayScore: 1 });
+      expect(byId.get('m1#GOAL#home#1')?.payload.occurredAt).toBe('2026-06-14T19:51:00.000Z');
+      // index 2 is the 30' goal -> 2–0.
+      expect(byId.get('m1#GOAL#home#2')?.payload).toMatchObject({ homeScore: 2, awayScore: 0 });
+      expect(byId.get('m1#GOAL#home#2')?.payload.occurredAt).toBe('2026-06-14T18:30:00.000Z');
+      // the away goal at 43' -> 2–1.
+      expect(byId.get('m1#GOAL#away#0')?.payload).toMatchObject({ homeScore: 2, awayScore: 1 });
+      // the 7', 59', 84' goals fill in the rest of the climb.
+      expect(byId.get('m1#GOAL#home#0')?.payload).toMatchObject({ homeScore: 1, awayScore: 0 });
+      expect(byId.get('m1#GOAL#home#3')?.payload).toMatchObject({ homeScore: 3, awayScore: 1 });
+      expect(byId.get('m1#GOAL#home#4')?.payload).toMatchObject({ homeScore: 4, awayScore: 1 });
+    });
+
+    it('falls back to the current total + live clock for a just-scored goal with no action yet', () => {
+      // Two home goals; only the first has its action. The second (latest) has no
+      // minute yet, so it backstops to the current total and the live clock.
+      const existing = makeMatch({ status: 'LIVE', homeScore: 1, awayScore: 0, minute: "23'" });
+      const merged = makeMatch({
+        status: 'LIVE',
+        homeScore: 2,
+        awayScore: 0,
+        minute: "24'",
+        actions: [{ team: 'ENG', player: 'Kane', type: 'GOAL', minute: "23'" }],
+      });
+
+      const goals = detectEvents(existing, merged, NO_TEAMS).filter((e) => e.type === 'GOAL');
+      const byId = new Map(goals.map((g) => [g.eventId, g]));
+
+      expect(byId.get('m1#GOAL#home#0')?.payload).toMatchObject({ homeScore: 1, awayScore: 0 });
+      expect(byId.get('m1#GOAL#home#0')?.payload.occurredAt).toBe('2026-06-14T18:23:00.000Z');
+      // No action -> current total (2–0) and live-clock occurredAt (24').
+      expect(byId.get('m1#GOAL#home#1')?.payload).toMatchObject({ homeScore: 2, awayScore: 0 });
+      expect(byId.get('m1#GOAL#home#1')?.payload.occurredAt).toBe('2026-06-14T18:24:00.000Z');
+    });
+
+    it('re-emits an earlier goal when a later poll reveals an opposing goal came first', () => {
+      // existing: home 50' known, away goal action not yet arrived -> home#0 reads
+      // 1–0. merged: the away 20' action lands, so home#0's true scoreline is 1–1.
+      const existing = makeMatch({
+        status: 'LIVE',
+        homeScore: 1,
+        awayScore: 1,
+        actions: [{ team: 'ENG', player: 'Kane', type: 'GOAL', minute: "50'" }],
+      });
+      const merged = makeMatch({
+        status: 'LIVE',
+        homeScore: 1,
+        awayScore: 1,
+        actions: [
+          { team: 'ENG', player: 'Kane', type: 'GOAL', minute: "50'" },
+          { team: 'BRA', player: 'Vinicius', type: 'GOAL', minute: "20'" },
+        ],
+      });
+
+      const goals = detectEvents(existing, merged, NO_TEAMS).filter((e) => e.type === 'GOAL');
+      const byId = new Map(goals.map((g) => [g.eventId, g]));
+
+      // The corrected scoreline re-fires under the same eventId (newest wins at read).
+      expect(byId.get('m1#GOAL#home#0')?.payload).toMatchObject({ homeScore: 1, awayScore: 1 });
+      expect(byId.get('m1#GOAL#away#0')?.payload).toMatchObject({ homeScore: 0, awayScore: 1 });
     });
   });
 

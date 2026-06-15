@@ -38,6 +38,14 @@ export function eventTeamCodes(event: FeedEvent): string[] {
   return [home, away].filter((c): c is string => !!c);
 }
 
+// The timestamp to ORDER and DISPLAY an event by: when it actually happened in
+// the match. Goals carry `payload.occurredAt` (real match-clock time) while their
+// `ts` stays at detection time for read-dedupe; everything else (cards already
+// back-dated, kickoff/HT/FT) has no `occurredAt` and falls back to `ts`.
+export function displayTs(event: FeedEvent): string {
+  return (event.payload.occurredAt as string | undefined) ?? event.ts;
+}
+
 // ISO string -> epoch ms, treating an unparseable timestamp as 0 (sorts oldest).
 function tsMs(ts: string): number {
   const ms = new Date(ts).getTime();
@@ -68,8 +76,8 @@ export function groupEventsByMatch(events: FeedEvent[], matches: Match[]): Match
 
   const groups: MatchEventGroup[] = [];
   for (const [key, groupEvents] of buckets) {
-    const sorted = [...groupEvents].sort((a, b) => tsMs(b.ts) - tsMs(a.ts));
-    const latestTs = sorted.length ? tsMs(sorted[0].ts) : 0;
+    const sorted = [...groupEvents].sort((a, b) => tsMs(displayTs(b)) - tsMs(displayTs(a)));
+    const latestTs = sorted.length ? tsMs(displayTs(sorted[0])) : 0;
 
     if (key === OTHER_GROUP_KEY) {
       groups.push({

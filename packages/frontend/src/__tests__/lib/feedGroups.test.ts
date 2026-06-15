@@ -90,6 +90,20 @@ describe('groupEventsByMatch', () => {
     expect(groups.map((g) => g.matchId)).toEqual(['live', 'newFin', 'oldFin']);
   });
 
+  it('orders goals by payload.occurredAt (match clock), not detection ts', () => {
+    const matches = [makeMatch({ matchId: 'm1', status: 'FINISHED' })];
+    // A catch-up batch: both detected at ~the same instant, but they happened at
+    // different match minutes. goalB happened later in the match than goalA, even
+    // though its detection ts is older — occurredAt must win.
+    const goalA = makeEvent('GOAL', 'm1', { homeTeam: 'ENG', awayTeam: 'GER', occurredAt: T(0) }, T(10));
+    const goalB = makeEvent('GOAL', 'm1', { homeTeam: 'ENG', awayTeam: 'GER', occurredAt: T(10) }, T(0));
+
+    const groups = groupEventsByMatch([goalA, goalB], matches);
+    expect(groups[0].events.map((e) => e.eventId)).toEqual([goalB.eventId, goalA.eventId]);
+    // latestTs reflects the match-clock time of the newest event, not its ts.
+    expect(groups[0].latestTs).toBe(Date.parse(T(10)));
+  });
+
   it('collapses events with no matchId, or an unknown match, into one "other" group sorted last', () => {
     const matches = [makeMatch({ matchId: 'm1', status: 'LIVE' })];
     const bracket = makeEvent('BRACKET_DRAWN', undefined, { slots: 16 }, T(100));

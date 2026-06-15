@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Team } from '@sweepstake/shared';
-import { MatchEventGroup, isGroupExpandedByDefault, isGroupMine } from '@/lib/feedGroups';
+import { MatchEventGroup, displayTs, isGroupExpandedByDefault, isGroupMine } from '@/lib/feedGroups';
 import { relativeTimeLines } from '@/lib/format';
 import { TeamOwner } from '@/lib/owners';
 import LiveBadge from '@/components/LiveBadge';
@@ -43,6 +43,7 @@ export default function FeedMatchGroup({
   // The most recent event (events are newest-first) — its relative time is shown
   // in the header as "how long ago the last thing happened" (e.g. since full time).
   const latest = group.events[0];
+  const latestWhen = latest ? displayTs(latest) : undefined;
 
   return (
     <div
@@ -90,13 +91,13 @@ export default function FeedMatchGroup({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </div>
-          {latest && (
+          {latest && latestWhen && (
             <time
-              dateTime={latest.ts}
+              dateTime={latestWhen}
               data-testid="feed-group-time"
               className="text-white/70 tabular-nums text-center leading-tight"
             >
-              {relativeTimeLines(latest.ts, now).map((line) => (
+              {relativeTimeLines(latestWhen, now).map((line) => (
                 <span key={line} className="block whitespace-nowrap">
                   {line}
                 </span>

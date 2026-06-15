@@ -1,7 +1,7 @@
 'use client';
 
 import { FeedEvent, FeedEventType, Team } from '@sweepstake/shared';
-import { eventTeamCodes } from '@/lib/feedGroups';
+import { displayTs, eventTeamCodes } from '@/lib/feedGroups';
 import { relativeTime } from '@/lib/format';
 import { TeamOwner } from '@/lib/owners';
 
@@ -36,6 +36,10 @@ export function FeedRow({ event, teamsByCode, ownersByTeam, claimedPerson, now }
   const ownerNames = uniqueOwners(teamCodes, ownersByTeam).map((o) => o.name);
   const involvesClaimed = claimedPerson != null && ownerNames.includes(claimedPerson);
 
+  // When the event happened in the match (goals back-date via payload.occurredAt;
+  // everything else falls back to its detection ts).
+  const when = displayTs(event);
+
   return (
     <li
       data-testid="feed-event"
@@ -55,11 +59,11 @@ export function FeedRow({ event, teamsByCode, ownersByTeam, claimedPerson, now }
             {meta.label}
           </span>
           <time
-            dateTime={event.ts}
+            dateTime={when}
             className="text-xs text-white/60 whitespace-nowrap shrink-0"
-            title={new Date(event.ts).toLocaleString('en-GB', { timeZone: 'Europe/London' })}
+            title={new Date(when).toLocaleString('en-GB', { timeZone: 'Europe/London' })}
           >
-            {relativeTime(event.ts, now)}
+            {relativeTime(when, now)}
           </time>
         </div>
         <div className="mt-1 text-sm font-medium">
