@@ -8,11 +8,20 @@ import FilterTabs from '@/components/FilterTabs';
 import TeamFilterDropdown from '@/components/TeamFilterDropdown';
 import MatchList from '@/components/MatchList';
 import { useGroup } from '@/hooks/GroupContext';
+import { useNow } from '@/hooks/useNow';
 import { buildOwnersByTeam } from '@/lib/owners';
-import { FixturesFilter, filterFixtures, fixturesEmptyMessage } from '@/lib/fixtures';
+import {
+  FixturesFilter,
+  filterFixtures,
+  fixturesEmptyMessage,
+  todayDividerIndex,
+} from '@/lib/fixtures';
 
 export default function FixturesPage() {
   const { groupKey, group, teams, matches, claimedPerson, loading } = useGroup();
+  // Drives the "Today" divider's position. It only moves at midnight, so a
+  // once-a-minute tick is ample (and cheap) — no need for the 1s default.
+  const now = useNow(60_000);
   const [filter, setFilter] = useState<FixturesFilter>('all');
   const [selectedTeamCode, setSelectedTeamCode] = useState<string | null>(null);
   const router = useRouter();
@@ -67,6 +76,13 @@ export default function FixturesPage() {
     [matches, filter, selectedTeamCode, ownersByTeam, claimedPerson],
   );
 
+  // The "Today" marker is an All-view affordance only — under "My fixtures" the
+  // list is already short and self-evidently yours, so we leave it off there.
+  const todayIndex = useMemo(
+    () => (filter === 'all' ? todayDividerIndex(visible, now) : null),
+    [filter, visible, now],
+  );
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -113,6 +129,7 @@ export default function FixturesPage() {
             teamOwners={ownersByTeam}
             teamFlags={teamFlags}
             claimedPerson={claimedPerson}
+            todayDividerIndex={todayIndex}
             showStage
           />
         )}

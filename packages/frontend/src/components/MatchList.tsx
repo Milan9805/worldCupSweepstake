@@ -1,5 +1,6 @@
 'use client';
 
+import { Fragment } from 'react';
 import { Match } from '@sweepstake/shared';
 import { formatMatchDate, formatMatchTime, formatStage } from '@/lib/format';
 import { isMatchMine } from '@/lib/fixtures';
@@ -18,13 +19,24 @@ interface MatchListProps {
   // mirroring the feed's "my games" treatment. Lists that don't pass it (groups,
   // tree, bracket) get no highlight.
   claimedPerson?: string | null;
+  // List position before which to render the "Today" divider (see
+  // todayDividerIndex). null/undefined renders no divider — only the all-fixtures
+  // list passes it; the stage-scoped lists don't.
+  todayDividerIndex?: number | null;
 }
 
 // Fallbacks for when the source omits a channel's colours.
 const DEFAULT_CHANNEL_BG = '#374151';
 const DEFAULT_CHANNEL_FG = '#ffffff';
 
-export default function MatchList({ matches, teamOwners, teamFlags, showStage, claimedPerson }: MatchListProps) {
+export default function MatchList({
+  matches,
+  teamOwners,
+  teamFlags,
+  showStage,
+  claimedPerson,
+  todayDividerIndex,
+}: MatchListProps) {
   const statusBadge = (match: Match) => {
     switch (match.status) {
       case 'LIVE':
@@ -42,11 +54,20 @@ export default function MatchList({ matches, teamOwners, teamFlags, showStage, c
 
   return (
     <div className="space-y-2">
-      {matches.map((match) => {
+      {matches.map((match, index) => {
         const mine = isMatchMine(match, teamOwners ?? {}, claimedPerson ?? null);
         return (
+        <Fragment key={match.matchId}>
+        {index === todayDividerIndex && (
+          <div className="flex items-center gap-3 py-1" data-testid="today-divider">
+            <div className="h-px flex-1 bg-amber-400/40" />
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-300">
+              Today
+            </span>
+            <div className="h-px flex-1 bg-amber-400/40" />
+          </div>
+        )}
         <div
-          key={match.matchId}
           data-involves-claimed={mine ? 'true' : 'false'}
           className={`flex flex-col gap-2 p-3 rounded-lg border transition-all ${
             mine
@@ -95,6 +116,7 @@ export default function MatchList({ matches, teamOwners, teamFlags, showStage, c
             </div>
           </div>
         </div>
+        </Fragment>
         );
       })}
     </div>

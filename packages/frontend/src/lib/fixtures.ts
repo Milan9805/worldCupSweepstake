@@ -55,6 +55,25 @@ export function filterFixtures(
   return sorted;
 }
 
+// Europe/London calendar day for a timestamp, as a sortable YYYY-MM-DD string
+// (en-CA renders ISO order). Bucketing by the UK match day — not the raw UTC
+// instant — keeps an evening kick-off on the right side of "today" under BST.
+export function londonDayKey(ts: number | string): string {
+  return new Date(ts).toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+}
+
+// Index in a chronologically-sorted fixtures list before which the "Today"
+// marker belongs: the first fixture kicking off today or later (Europe/London).
+// A rest day has no fixture dated today, so the marker lands before the next
+// upcoming one — it always shows where "now" sits in the list. Returns null once
+// every fixture is in the past (tournament over), so the marker simply drops out.
+// Expects the list already sorted oldest -> newest (filterFixtures guarantees it).
+export function todayDividerIndex(sortedMatches: Match[], now: number): number | null {
+  const today = londonDayKey(now);
+  const idx = sortedMatches.findIndex((m) => londonDayKey(m.datetime) >= today);
+  return idx === -1 ? null : idx;
+}
+
 // Empty-state copy, chosen by why the list is empty. Priority: nothing loaded at
 // all wins first, then a team search with no hits, then the 'mine' view with no
 // owned fixtures, then a generic fallback.

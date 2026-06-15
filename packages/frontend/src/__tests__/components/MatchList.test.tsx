@@ -227,4 +227,39 @@ describe('MatchList', () => {
       expect(card).toHaveAttribute('data-involves-claimed', 'false');
     });
   });
+
+  describe('"Today" divider', () => {
+    const matches = [
+      makeMatch({ matchId: '1', homeTeam: 'ENG', awayTeam: 'BRA' }),
+      makeMatch({ matchId: '2', homeTeam: 'GER', awayTeam: 'FRA' }),
+      makeMatch({ matchId: '3', homeTeam: 'ESP', awayTeam: 'ITA' }),
+    ];
+
+    it('renders no divider by default', () => {
+      render(<MatchList matches={matches} />);
+      expect(screen.queryByTestId('today-divider')).not.toBeInTheDocument();
+    });
+
+    it('renders no divider when the index is null', () => {
+      render(<MatchList matches={matches} todayDividerIndex={null} />);
+      expect(screen.queryByTestId('today-divider')).not.toBeInTheDocument();
+    });
+
+    it('renders a single divider labelled "Today" at the given index', () => {
+      render(<MatchList matches={matches} todayDividerIndex={1} />);
+      const dividers = screen.getAllByTestId('today-divider');
+      expect(dividers).toHaveLength(1);
+      expect(dividers[0]).toHaveTextContent('Today');
+    });
+
+    it('places the divider immediately before the match at that index', () => {
+      const { container } = render(<MatchList matches={matches} todayDividerIndex={1} />);
+      // Walk the list children in DOM order: card 1, divider, card 2, card 3.
+      const list = container.firstElementChild as HTMLElement;
+      const order = Array.from(list.children).map((el) =>
+        el.getAttribute('data-testid') === 'today-divider' ? 'divider' : 'card',
+      );
+      expect(order).toEqual(['card', 'divider', 'card', 'card']);
+    });
+  });
 });

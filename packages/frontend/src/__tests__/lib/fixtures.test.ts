@@ -3,6 +3,8 @@ import {
   isMatchMine,
   filterFixtures,
   fixturesEmptyMessage,
+  londonDayKey,
+  todayDividerIndex,
 } from '../../lib/fixtures';
 import { TeamOwner } from '../../lib/owners';
 
@@ -110,6 +112,60 @@ describe('filterFixtures', () => {
     const before = matches.map((m) => m.matchId);
     filterFixtures(matches, { filter: 'all', teamCode: null }, OWNERS, 'Alice');
     expect(matches.map((m) => m.matchId)).toEqual(before);
+  });
+});
+
+describe('londonDayKey', () => {
+  it('renders the Europe/London day as a sortable YYYY-MM-DD string', () => {
+    expect(londonDayKey('2026-06-15T12:00:00Z')).toBe('2026-06-15');
+  });
+
+  it('buckets a late BST kick-off on its UK day, not the UTC next day', () => {
+    // 23:30 BST on 15 Jun is 22:30Z the same day — must stay 15 Jun.
+    expect(londonDayKey('2026-06-15T22:30:00Z')).toBe('2026-06-15');
+  });
+});
+
+describe('todayDividerIndex', () => {
+  // Sorted oldest -> newest, spanning before/on/after "today" (15 Jun).
+  const sorted = [
+    makeMatch({ matchId: 'past', datetime: '2026-06-13T18:00:00Z' }),
+    makeMatch({ matchId: 'today', datetime: '2026-06-15T20:00:00Z' }),
+    makeMatch({ matchId: 'future', datetime: '2026-06-17T18:00:00Z' }),
+  ];
+  const NOW = new Date('2026-06-15T09:00:00Z').getTime();
+
+  it('points at the first fixture kicking off today', () => {
+    expect(todayDividerIndex(sorted, NOW)).toBe(1);
+  });
+
+  it('falls back to the next upcoming fixture on a rest day', () => {
+    const restDay = [
+      makeMatch({ matchId: 'past', datetime: '2026-06-13T18:00:00Z' }),
+      makeMatch({ matchId: 'future', datetime: '2026-06-17T18:00:00Z' }),
+    ];
+    // Today is 15 Jun with nothing scheduled — the marker leads the 17 Jun match.
+    expect(todayDividerIndex(restDay, NOW)).toBe(1);
+  });
+
+  it('returns 0 when every fixture is still upcoming', () => {
+    const allFuture = [
+      makeMatch({ matchId: 'a', datetime: '2026-06-16T18:00:00Z' }),
+      makeMatch({ matchId: 'b', datetime: '2026-06-18T18:00:00Z' }),
+    ];
+    expect(todayDividerIndex(allFuture, NOW)).toBe(0);
+  });
+
+  it('returns null once every fixture is in the past', () => {
+    const allPast = [
+      makeMatch({ matchId: 'a', datetime: '2026-06-10T18:00:00Z' }),
+      makeMatch({ matchId: 'b', datetime: '2026-06-12T18:00:00Z' }),
+    ];
+    expect(todayDividerIndex(allPast, NOW)).toBeNull();
+  });
+
+  it('returns null for an empty list', () => {
+    expect(todayDividerIndex([], NOW)).toBeNull();
   });
 });
 
