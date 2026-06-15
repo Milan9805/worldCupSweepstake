@@ -5,6 +5,11 @@ import FeedPage from '../../app/feed/page';
 import { getFeed } from '../../lib/api';
 
 const mockPush = jest.fn();
+// Real next/navigation returns a stable router instance; mirror that with a
+// single object. Returning a fresh `{ push }` per call would change the
+// reference each render, re-firing the feed-load effect (router is in its deps)
+// and leaking setState past the test's act() scope.
+const mockRouter = { push: mockPush };
 
 let mockGroupKey: string | null = 'test-group';
 let mockGroup: Record<string, unknown> | null = null;
@@ -34,7 +39,7 @@ jest.mock('../../lib/api', () => ({
 }));
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: mockPush }),
+  useRouter: () => mockRouter,
 }));
 
 jest.mock('../../components/NavBar', () => {
