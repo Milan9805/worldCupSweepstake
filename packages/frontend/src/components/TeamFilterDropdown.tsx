@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Team } from '@sweepstake/shared';
+import { Team, normaliseTeamName } from '@sweepstake/shared';
 
 interface TeamFilterDropdownProps {
   teams: Team[]; // already filtered/sorted by the caller
@@ -62,8 +62,12 @@ export default function TeamFilterDropdown({
 
   const triggerLabel = selected ? `${selected.flag} ${selected.name}` : 'All teams';
 
-  const q = query.trim().toLowerCase();
-  const filtered = q ? teams.filter((t) => t.name.toLowerCase().includes(q)) : teams;
+  // Normalise both sides so diacritics, case, and punctuation don't cause
+  // misses — e.g. typing "curacao" still matches "Curaçao".
+  const q = normaliseTeamName(query);
+  const filtered = q
+    ? teams.filter((t) => normaliseTeamName(t.name).includes(q))
+    : teams;
 
   return (
     <div ref={containerRef} className="relative">
