@@ -76,11 +76,13 @@ export default function FixturesPage() {
     [matches, filter, selectedTeamCode, ownersByTeam, claimedPerson],
   );
 
-  // The "Today" marker is an All-view affordance only — under "My fixtures" the
-  // list is already short and self-evidently yours, so we leave it off there.
+  // The "Today" marker is for the unfiltered All view only. Under "My fixtures"
+  // the list is already short and self-evidently yours; and once a team search is
+  // applied the list jumps around its sparse fixtures, where a "today" line reads
+  // as confusing rather than orienting — so it's dropped in both cases.
   const todayIndex = useMemo(
-    () => (filter === 'all' ? todayDividerIndex(visible, now) : null),
-    [filter, visible, now],
+    () => (filter === 'all' && !selectedTeamCode ? todayDividerIndex(visible, now) : null),
+    [filter, selectedTeamCode, visible, now],
   );
 
   if (loading) {

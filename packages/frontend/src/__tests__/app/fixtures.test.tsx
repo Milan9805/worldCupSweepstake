@@ -259,6 +259,27 @@ describe('FixturesPage', () => {
     expect(screen.queryByText(dateLabel(M_LATE.datetime))).not.toBeInTheDocument();
   });
 
+  it('hides the Today divider once a team search is applied (All view only)', () => {
+    // Pin "now" inside the fixture range (13 Jun) so the divider deterministically
+    // renders in the unfiltered All view — it leads M2 (13 Jun), index 1.
+    const nowSpy = jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(new Date('2026-06-13T09:00:00Z').getTime());
+    try {
+      render(<FixturesPage />);
+
+      // Unfiltered All view: the Today divider is present.
+      expect(screen.getByTestId('today-divider')).toBeInTheDocument();
+
+      // Apply a team search (Germany) — still the All view, but the narrowed list
+      // reads confusingly with a "today" line, so the divider is dropped.
+      fireEvent.change(screen.getByTestId('team-filter'), { target: { value: 'GER' } });
+      expect(screen.queryByTestId('today-divider')).not.toBeInTheDocument();
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
   it('clears the team filter when switching to My fixtures', () => {
     render(<FixturesPage />);
 
