@@ -11,15 +11,17 @@ function getApiKey(): Promise<string> {
 // under 2000 is the 2026 FIFA World Cup (verified 2026-05-22).
 const COMPETITION_ID = 2000;
 
-// football-data.org tags a few nations with the ISO-3166 alpha-3 code where our
-// data (and FIFA/BBC, via teamNames.ts) use the traditional football code.
-// Uruguay is the one that bites at this tournament: the API says "URY", but our
-// teams and fixtures key on "URU", so its fixtures rendered under a non-existent
-// team and its standings row never joined to the team (all-zero stats).
-// Translate the API's TLA to ours at ingestion so every downstream join
-// (fixture → team, standing → team) lines up on our canonical code.
+// football-data.org tags a few nations with a TLA that differs from the
+// traditional football code our data (and FIFA/BBC, via teamNames.ts) uses, so
+// without translation their fixtures render under a non-existent team (raw code,
+// no flag, shown unassigned) and their standings row never joins to the team
+// (all-zero stats). Uruguay (API "URY" → our "URU") and Curaçao (API "CUR" → our
+// "CUW") both bite at this tournament. Translate the API's TLA to ours at
+// ingestion so every downstream join (fixture → team, standing → team) lines up
+// on our canonical code.
 const TLA_OVERRIDES: Record<string, string> = {
   URY: 'URU',
+  CUR: 'CUW',
 };
 
 function normaliseTla(tla: string): string {

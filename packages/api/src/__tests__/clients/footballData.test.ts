@@ -232,6 +232,35 @@ describe('footballData client', () => {
       expect(result[1].awayTeam).toBe('URU');
     });
 
+    it('normalises Curaçao TLA (CUR → CUW) on both home and away', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          matches: [{
+            id: 1, utcDate: '2026-06-14T18:00:00Z', status: 'FINISHED',
+            stage: 'GROUP_STAGE', group: 'GROUP_E',
+            homeTeam: { tla: 'GER', name: 'Germany' },
+            awayTeam: { tla: 'CUR', name: 'Curaçao' },
+            score: { fullTime: { home: 7, away: 1 } },
+            venue: 'TBC',
+          }, {
+            id: 2, utcDate: '2026-06-21T22:00:00Z', status: 'SCHEDULED',
+            stage: 'GROUP_STAGE', group: 'GROUP_E',
+            homeTeam: { tla: 'CUR', name: 'Curaçao' },
+            awayTeam: { tla: 'GER', name: 'Germany' },
+            score: { fullTime: { home: null, away: null } },
+            venue: 'TBC',
+          }],
+        }),
+      });
+
+      const result = await fetchMatches();
+      expect(result[0].homeTeam).toBe('GER');
+      expect(result[0].awayTeam).toBe('CUW');
+      expect(result[1].homeTeam).toBe('CUW');
+      expect(result[1].awayTeam).toBe('GER');
+    });
+
     it('throws on API error response', async () => {
       mockFetch.mockResolvedValue({
         ok: false,
@@ -284,6 +313,27 @@ describe('footballData client', () => {
       expect(result[0].table[1].team.tla).toBe('URU');
       // Other row fields are preserved untouched.
       expect(result[0].table[1].points).toBe(3);
+    });
+
+    it('normalises Curaçao TLA (CUR → CUW) in standings rows', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          standings: [{
+            group: 'GROUP_E',
+            table: [
+              { position: 1, team: { tla: 'GER', name: 'Germany' }, playedGames: 1, won: 1, draw: 0, lost: 0, goalsFor: 7, goalsAgainst: 1, goalDifference: 6, points: 3 },
+              { position: 2, team: { tla: 'CUR', name: 'Curaçao' }, playedGames: 1, won: 0, draw: 0, lost: 1, goalsFor: 1, goalsAgainst: 7, goalDifference: -6, points: 0 },
+            ],
+          }],
+        }),
+      });
+
+      const result = await fetchStandings();
+      expect(result[0].table[0].team.tla).toBe('GER');
+      expect(result[0].table[1].team.tla).toBe('CUW');
+      // Other row fields are preserved untouched.
+      expect(result[0].table[1].goalDifference).toBe(-6);
     });
 
     it('returns empty array when no standings', async () => {
