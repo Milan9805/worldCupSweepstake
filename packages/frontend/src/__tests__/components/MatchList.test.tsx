@@ -170,4 +170,61 @@ describe('MatchList', () => {
     rerender(<MatchList matches={[makeMatch({ channels: [] })]} />);
     expect(screen.queryByText('ITV1')).not.toBeInTheDocument();
   });
+
+  describe('"my fixtures" highlight', () => {
+    const teamOwners = {
+      ENG: { name: 'Alice', imageUrl: null },
+      BRA: { name: 'Bob', imageUrl: null },
+    };
+
+    it('highlights a match when the claimed person owns the home team', () => {
+      const matches = [makeMatch({ homeTeam: 'ENG', awayTeam: 'BRA' })];
+      const { container } = render(
+        <MatchList matches={matches} teamOwners={teamOwners} claimedPerson="Alice" />,
+      );
+      const card = container.querySelector('[data-involves-claimed]');
+      expect(card).toHaveAttribute('data-involves-claimed', 'true');
+      expect(card).toHaveClass('bg-sky-400/10');
+    });
+
+    it('highlights a match when the claimed person owns the away team', () => {
+      const matches = [makeMatch({ homeTeam: 'ENG', awayTeam: 'BRA' })];
+      const { container } = render(
+        <MatchList matches={matches} teamOwners={teamOwners} claimedPerson="Bob" />,
+      );
+      const card = container.querySelector('[data-involves-claimed]');
+      expect(card).toHaveAttribute('data-involves-claimed', 'true');
+      expect(card).toHaveClass('bg-sky-400/10');
+    });
+
+    it('does not highlight a match the claimed person owns no team in', () => {
+      const matches = [makeMatch({ homeTeam: 'ENG', awayTeam: 'BRA' })];
+      const { container } = render(
+        <MatchList matches={matches} teamOwners={teamOwners} claimedPerson="Carol" />,
+      );
+      const card = container.querySelector('[data-involves-claimed]');
+      expect(card).toHaveAttribute('data-involves-claimed', 'false');
+      expect(card).not.toHaveClass('bg-sky-400/10');
+    });
+
+    it('highlights only the claimed person’s matches in a mixed list', () => {
+      const matches = [
+        makeMatch({ matchId: '1', homeTeam: 'ENG', awayTeam: 'BRA' }),
+        makeMatch({ matchId: '2', homeTeam: 'GER', awayTeam: 'FRA' }),
+      ];
+      const { container } = render(
+        <MatchList matches={matches} teamOwners={teamOwners} claimedPerson="Alice" />,
+      );
+      const cards = container.querySelectorAll('[data-involves-claimed]');
+      expect(cards[0]).toHaveAttribute('data-involves-claimed', 'true');
+      expect(cards[1]).toHaveAttribute('data-involves-claimed', 'false');
+    });
+
+    it('highlights nothing when claimedPerson is not provided', () => {
+      const matches = [makeMatch({ homeTeam: 'ENG', awayTeam: 'BRA' })];
+      const { container } = render(<MatchList matches={matches} teamOwners={teamOwners} />);
+      const card = container.querySelector('[data-involves-claimed]');
+      expect(card).toHaveAttribute('data-involves-claimed', 'false');
+    });
+  });
 });

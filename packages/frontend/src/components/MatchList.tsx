@@ -2,6 +2,7 @@
 
 import { Match } from '@sweepstake/shared';
 import { formatMatchDate, formatMatchTime, formatStage } from '@/lib/format';
+import { isMatchMine } from '@/lib/fixtures';
 import LiveBadge from '@/components/LiveBadge';
 import MatchScoreline from '@/components/MatchScoreline';
 
@@ -13,13 +14,17 @@ interface MatchListProps {
   // default — the groups/tree/bracket lists are already scoped to one stage, so
   // it's only useful on the all-fixtures list.
   showStage?: boolean;
+  // When set, matches the claimed person owns a team in are highlighted blue —
+  // mirroring the feed's "my games" treatment. Lists that don't pass it (groups,
+  // tree, bracket) get no highlight.
+  claimedPerson?: string | null;
 }
 
 // Fallbacks for when the source omits a channel's colours.
 const DEFAULT_CHANNEL_BG = '#374151';
 const DEFAULT_CHANNEL_FG = '#ffffff';
 
-export default function MatchList({ matches, teamOwners, teamFlags, showStage }: MatchListProps) {
+export default function MatchList({ matches, teamOwners, teamFlags, showStage, claimedPerson }: MatchListProps) {
   const statusBadge = (match: Match) => {
     switch (match.status) {
       case 'LIVE':
@@ -37,10 +42,17 @@ export default function MatchList({ matches, teamOwners, teamFlags, showStage }:
 
   return (
     <div className="space-y-2">
-      {matches.map((match) => (
+      {matches.map((match) => {
+        const mine = isMatchMine(match, teamOwners ?? {}, claimedPerson ?? null);
+        return (
         <div
           key={match.matchId}
-          className="flex flex-col gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-all"
+          data-involves-claimed={mine ? 'true' : 'false'}
+          className={`flex flex-col gap-2 p-3 rounded-lg border transition-all ${
+            mine
+              ? 'border-sky-400/60 bg-sky-400/10 hover:bg-sky-400/20'
+              : 'border-white/10 bg-white/5 hover:bg-white/10'
+          }`}
         >
           <div className="flex items-start gap-2">
             {/* Date — fixed width, forced onto one line so every row is consistently two lines */}
@@ -83,7 +95,8 @@ export default function MatchList({ matches, teamOwners, teamFlags, showStage }:
             </div>
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
