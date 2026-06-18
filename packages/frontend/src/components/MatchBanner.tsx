@@ -109,6 +109,7 @@ function LiveMatchRow({
         <span className="font-semibold text-white">{teamLabel(match.awayTeam)}</span>
         <OwnerTag owner={ownersByTeam[match.awayTeam] ?? null} />
       </div>
+      <ChannelPills channels={match.channels} />
     </div>
   );
 }

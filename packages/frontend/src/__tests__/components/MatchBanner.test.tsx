@@ -309,6 +309,20 @@ describe('MatchBanner', () => {
       expect(screen.getByText('(Group E)')).toBeInTheDocument(); // stage on the badge line
       expect(screen.getByText('2 - 1')).toBeInTheDocument(); // matchup/score line
     });
+
+    it('shows the broadcast channel pills for a live match', () => {
+      const onTv = makeMatch({
+        matchId: 'tv',
+        status: 'LIVE',
+        homeScore: 1,
+        awayScore: 0,
+        minute: "30'",
+        datetime: new Date(NOW - H).toISOString(),
+        channels: [{ name: 'BBC One', bg: '#000000', fg: '#ffffff' }],
+      });
+      render(<MatchBanner matches={[onTv]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
+      expect(screen.getByText('BBC One')).toBeInTheDocument();
+    });
   });
 
   describe('see all fixtures link', () => {
