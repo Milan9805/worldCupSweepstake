@@ -115,7 +115,7 @@ test.describe('Match banner — mobile line stack', () => {
     const seeAll = page.getByRole('link', { name: /see all fixtures/i });
 
     await expect(label).toBeVisible();
-    await expect(seeAll).toHaveAttribute('href', '/fixtures');
+    await expect(seeAll).toHaveAttribute('href', '/fixtures?scroll=today');
     // No live game in this set, so the feed link is hidden.
     await expect(page.getByRole('link', { name: /see live feed/i })).toHaveCount(0);
 
