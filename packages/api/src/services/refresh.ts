@@ -14,7 +14,7 @@ import {
   FeedEvent,
   hasActiveMatchWindow,
 } from '@sweepstake/shared';
-import { generateTreeIfReady, processKnockoutResults } from './generateTree';
+import { generateTreeIfReady, processKnockoutResults, markCompletedGroupEliminations } from './generateTree';
 import { detectEvents } from './detectEvents';
 import {
   deriveCardCounts,
@@ -157,6 +157,9 @@ export async function refreshData(preloadedMatches?: Match[]): Promise<RefreshRe
   } catch (statsError) {
     console.warn('Team stats refresh failed:', statsError);
   }
+
+  // Mark 4th-place teams eliminated in any groups that are now complete.
+  await markCompletedGroupEliminations();
 
   return buildResponse(source, refreshedAt, matches);
 }

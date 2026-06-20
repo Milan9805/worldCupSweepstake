@@ -1,8 +1,39 @@
-import { generateBracketSlots, getNextSlot, isGroupStageComplete } from '@sweepstake/shared';
+import { generateBracketSlots, getNextSlot, isGroupStageComplete, computeGroupStandings } from '@sweepstake/shared';
 import { Team, TreeSlot } from '@sweepstake/shared';
-import { getAllTeams, getTree, putTreeSlot, putTeam, getConfig, putConfig, putEvent } from '../db/dynamodb';
+import { getAllTeams, getTree, putTreeSlot, putTeam, batchPutTeams, getConfig, putConfig, putEvent } from '../db/dynamodb';
 
 const TREE_GENERATED_KEY = 'treeGenerated';
+
+/**
+ * For each group whose games are all complete, immediately mark the 4th-place
+ * team as eliminated without waiting for all 12 groups to finish.
+ * Idempotent — skips teams already marked eliminated.
+ */
+export async function markCompletedGroupEliminations(): Promise<void> {
+  const teams = await getAllTeams() as unknown as Team[];
+  const standings = computeGroupStandings(teams);
+  const toEliminate: Team[] = [];
+
+  for (const [, groupEntries] of standings) {
+    const groupLetter = groupEntries[0]?.groupLetter;
+    if (!groupLetter) continue;
+    const groupTeams = teams.filter((t) => t.groupLetter === groupLetter);
+    if (!groupTeams.every((t) => t.stats.played >= 3)) continue;
+
+    const fourth = groupEntries[3];
+    if (!fourth) continue;
+    const team = teams.find((t) => t.teamCode === fourth.teamCode);
+    if (team && !team.eliminated) {
+      team.eliminated = true;
+      team.eliminatedAt = 'Group Stage';
+      toEliminate.push(team);
+    }
+  }
+
+  if (toEliminate.length > 0) {
+    await batchPutTeams(toEliminate as unknown as Record<string, unknown>[]);
+  }
+}
 
 /**
  * Generate the knockout bracket from group standings.

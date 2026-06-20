@@ -19,6 +19,8 @@ const ZONE_CLASSES: Record<GroupZone, string> = {
   NONE: 'border-l-transparent',
 };
 
+const ELIMINATED_CLASSES = 'border-l-red-500/70 bg-red-500/10 opacity-60';
+
 export default function GroupsPage() {
   const { group, teams, matches, loading } = useGroup();
   const [selectedGroup, setSelectedGroup] = useState<string>('A');
@@ -108,7 +110,9 @@ export default function GroupsPage() {
                 <tr
                   key={team.teamCode}
                   className={`border-b border-b-white/5 border-l-4 ${
-                    ZONE_CLASSES[zones.get(team.teamCode) ?? 'NONE']
+                    team.eliminated
+                      ? ELIMINATED_CLASSES
+                      : ZONE_CLASSES[zones.get(team.teamCode) ?? 'NONE']
                   }`}
                 >
                   <td className="py-2 px-4">{idx + 1}</td>
@@ -149,6 +153,10 @@ export default function GroupsPage() {
           <span className="flex items-center gap-1.5">
             <span className="inline-block w-3 h-3 rounded-sm bg-amber-400/70" />
             3rd place
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-3 h-3 rounded-sm bg-red-500/70 opacity-60" />
+            Eliminated
           </span>
         </div>
 
