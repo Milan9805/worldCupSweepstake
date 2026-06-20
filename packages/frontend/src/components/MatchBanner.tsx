@@ -69,7 +69,7 @@ export default function MatchBanner({ matches, teamsByCode, ownersByTeam }: Matc
             </Link>
           )}
           <Link
-            href="/fixtures"
+            href="/fixtures?scroll=today"
             className="inline-flex items-center min-h-[44px] py-2 text-xs font-semibold uppercase tracking-wide text-gold hover:text-gold/80 underline underline-offset-2 transition-colors"
           >
             See all fixtures

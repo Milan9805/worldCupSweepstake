@@ -4,6 +4,7 @@ import {
   filterFixtures,
   fixturesEmptyMessage,
   londonDayKey,
+  nextMyMatch,
   todayDividerIndex,
 } from '../../lib/fixtures';
 import { TeamOwner } from '../../lib/owners';
@@ -166,6 +167,57 @@ describe('todayDividerIndex', () => {
 
   it('returns null for an empty list', () => {
     expect(todayDividerIndex([], NOW)).toBeNull();
+  });
+});
+
+describe('nextMyMatch', () => {
+  it('returns null when there is no claimed person', () => {
+    const matches = [makeMatch({ matchId: 'm1', homeTeam: 'ENG', awayTeam: 'FRA', status: 'SCHEDULED' })];
+    expect(nextMyMatch(matches, OWNERS, null)).toBeNull();
+  });
+
+  it('returns null for an empty match list', () => {
+    expect(nextMyMatch([], OWNERS, 'Alice')).toBeNull();
+  });
+
+  it('returns null when all of the claimed person\'s matches are finished', () => {
+    const matches = [
+      makeMatch({ matchId: 'm1', homeTeam: 'ENG', awayTeam: 'FRA', status: 'FINISHED' }),
+      makeMatch({ matchId: 'm2', homeTeam: 'FRA', awayTeam: 'ENG', status: 'FINISHED' }),
+    ];
+    expect(nextMyMatch(matches, OWNERS, 'Alice')).toBeNull();
+  });
+
+  it('returns null when all of the claimed person\'s matches are live', () => {
+    const matches = [
+      makeMatch({ matchId: 'm1', homeTeam: 'ENG', awayTeam: 'FRA', status: 'LIVE' }),
+    ];
+    expect(nextMyMatch(matches, OWNERS, 'Alice')).toBeNull();
+  });
+
+  it('returns the earliest SCHEDULED match belonging to the claimed person', () => {
+    const matches = [
+      makeMatch({ matchId: 'late', homeTeam: 'ENG', awayTeam: 'FRA', datetime: '2026-06-20T18:00:00Z', status: 'SCHEDULED' }),
+      makeMatch({ matchId: 'early', homeTeam: 'ENG', awayTeam: 'GER', datetime: '2026-06-14T18:00:00Z', status: 'SCHEDULED' }),
+    ];
+    const result = nextMyMatch(matches, OWNERS, 'Alice');
+    expect(result?.matchId).toBe('early');
+  });
+
+  it('ignores SCHEDULED matches that the claimed person does not own a team in', () => {
+    const matches = [
+      makeMatch({ matchId: 'mine', homeTeam: 'ENG', awayTeam: 'FRA', status: 'SCHEDULED' }),
+      makeMatch({ matchId: 'theirs', homeTeam: 'FRA', awayTeam: 'ITA', status: 'SCHEDULED' }),
+    ];
+    const result = nextMyMatch(matches, OWNERS, 'Alice');
+    expect(result?.matchId).toBe('mine');
+  });
+
+  it('returns null when the only SCHEDULED matches belong to someone else', () => {
+    const matches = [
+      makeMatch({ matchId: 'm1', homeTeam: 'FRA', awayTeam: 'ITA', status: 'SCHEDULED' }),
+    ];
+    expect(nextMyMatch(matches, OWNERS, 'Alice')).toBeNull();
   });
 });
 

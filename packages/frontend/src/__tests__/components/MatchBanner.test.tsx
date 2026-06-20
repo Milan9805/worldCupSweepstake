@@ -336,14 +336,14 @@ describe('MatchBanner', () => {
       });
       render(<MatchBanner matches={[live]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
       const link = screen.getByRole('link', { name: /See all fixtures/i });
-      expect(link).toHaveAttribute('href', '/fixtures');
+      expect(link).toHaveAttribute('href', '/fixtures?scroll=today');
     });
 
     it('renders a link to /fixtures in the next-only state', () => {
       const next = makeMatch({ status: 'SCHEDULED' });
       render(<MatchBanner matches={[next]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
       const link = screen.getByRole('link', { name: /See all fixtures/i });
-      expect(link).toHaveAttribute('href', '/fixtures');
+      expect(link).toHaveAttribute('href', '/fixtures?scroll=today');
     });
   });
 

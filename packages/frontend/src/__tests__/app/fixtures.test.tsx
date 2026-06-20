@@ -30,6 +30,12 @@ jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush }),
 }));
 
+jest.mock('next/link', () => {
+  return function MockLink({ href, children, ...props }: { href: string; children: React.ReactNode; [key: string]: unknown }) {
+    return <a href={href} {...props}>{children}</a>;
+  };
+});
+
 jest.mock('../../components/NavBar', () => {
   return function MockNavBar({ groupName }: { groupName?: string }) {
     return <div data-testid="navbar">{groupName}</div>;
@@ -306,5 +312,200 @@ describe('FixturesPage', () => {
     expect(
       screen.getByText(/No fixtures available yet\. Check back once the schedule is published\./i),
     ).toBeInTheDocument();
+  });
+
+  describe('scroll-to-today', () => {
+    let scrollToSpy: jest.SpyInstance;
+    let rafSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      scrollToSpy = jest.spyOn(window, 'scrollTo').mockImplementation(() => {});
+      // Make rAF synchronous so the callback fires within the render act().
+      rafSpy = jest.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+        cb(0);
+        return 0;
+      });
+    });
+
+    afterEach(() => {
+      scrollToSpy.mockRestore();
+      rafSpy.mockRestore();
+      window.history.pushState({}, '', '/');
+    });
+
+    it('scrolls to the Today divider when ?scroll=today is present and the divider renders', () => {
+      // Pin "now" to 13 Jun so the divider renders (before M_MID).
+      const nowSpy = jest
+        .spyOn(Date, 'now')
+        .mockReturnValue(new Date('2026-06-13T09:00:00Z').getTime());
+      window.history.pushState({}, '', '?scroll=today');
+      render(<FixturesPage />);
+      expect(scrollToSpy).toHaveBeenCalled();
+      nowSpy.mockRestore();
+    });
+
+    it('does not scroll when ?scroll=today is absent', () => {
+      window.history.pushState({}, '', '/fixtures');
+      render(<FixturesPage />);
+      expect(scrollToSpy).not.toHaveBeenCalled();
+    });
+
+    it('does not scroll when the tournament is over and no divider renders', () => {
+      // All matches in the past — todayDividerIndex returns null, no #today-divider element.
+      mockMatches = [
+        { ...M_EARLY, matchId: 'p1', status: 'FINISHED' as const },
+        { ...M_MID, matchId: 'p2', status: 'FINISHED' as const },
+        { ...M_LATE, matchId: 'p3', status: 'FINISHED' as const },
+      ];
+      const nowSpy = jest
+        .spyOn(Date, 'now')
+        .mockReturnValue(new Date('2026-06-20T12:00:00Z').getTime());
+      window.history.pushState({}, '', '?scroll=today');
+      render(<FixturesPage />);
+      expect(scrollToSpy).not.toHaveBeenCalled();
+      nowSpy.mockRestore();
+    });
+
+    it('scrolls to Today divider when switching to My fixtures', () => {
+      // Bob owns BRA, which is in M_MID (SCHEDULED, 13 Jun) and M_LATE (SCHEDULED, 14 Jun).
+      // Pin now to 12 Jun so the divider renders at index 0 on the My fixtures list.
+      mockClaimedPerson = 'Bob';
+      const nowSpy = jest
+        .spyOn(Date, 'now')
+        .mockReturnValue(new Date('2026-06-12T09:00:00Z').getTime());
+      render(<FixturesPage />);
+      scrollToSpy.mockClear(); // ignore any scroll from initial load
+      fireEvent.click(screen.getByRole('button', { name: 'My fixtures' }));
+      expect(scrollToSpy).toHaveBeenCalled();
+      nowSpy.mockRestore();
+    });
+
+    it('scrolls to Today divider when switching back to All', () => {
+      // Pin now to 13 Jun so the All-view divider also renders.
+      const nowSpy = jest
+        .spyOn(Date, 'now')
+        .mockReturnValue(new Date('2026-06-13T09:00:00Z').getTime());
+      render(<FixturesPage />);
+      fireEvent.click(screen.getByRole('button', { name: 'My fixtures' }));
+      scrollToSpy.mockClear(); // ignore the My fixtures scroll
+      fireEvent.click(screen.getByRole('button', { name: 'All' }));
+      expect(scrollToSpy).toHaveBeenCalled();
+      nowSpy.mockRestore();
+    });
+
+    it('does not scroll when switching tabs and there is no Today divider', () => {
+      // All matches in the past — todayDividerIndex returns null on every view.
+      mockMatches = [
+        { ...M_EARLY, matchId: 'p1', status: 'FINISHED' as const },
+        { ...M_MID, matchId: 'p2', status: 'FINISHED' as const },
+        { ...M_LATE, matchId: 'p3', status: 'FINISHED' as const },
+      ];
+      const nowSpy = jest
+        .spyOn(Date, 'now')
+        .mockReturnValue(new Date('2026-06-20T12:00:00Z').getTime());
+      render(<FixturesPage />);
+      scrollToSpy.mockClear();
+      fireEvent.click(screen.getByRole('button', { name: 'My fixtures' }));
+      expect(scrollToSpy).not.toHaveBeenCalled();
+      nowSpy.mockRestore();
+    });
+  });
+
+  describe('Today divider on My fixtures', () => {
+    it('shows the Today divider on My fixtures when the user has upcoming matches', () => {
+      // Bob owns BRA (M_MID + M_LATE both SCHEDULED). Pin now to 12 Jun so the
+      // divider renders before their earliest upcoming fixture.
+      mockClaimedPerson = 'Bob';
+      const nowSpy = jest
+        .spyOn(Date, 'now')
+        .mockReturnValue(new Date('2026-06-12T09:00:00Z').getTime());
+      render(<FixturesPage />);
+      fireEvent.click(screen.getByRole('button', { name: 'My fixtures' }));
+      expect(screen.getByTestId('today-divider')).toBeInTheDocument();
+      nowSpy.mockRestore();
+    });
+
+    it('hides the Today divider on My fixtures when all the user\'s matches are in the past', () => {
+      // Alice only has M_EARLY (FINISHED) — todayDividerIndex returns null.
+      mockClaimedPerson = 'Alice';
+      const nowSpy = jest
+        .spyOn(Date, 'now')
+        .mockReturnValue(new Date('2026-06-20T12:00:00Z').getTime());
+      render(<FixturesPage />);
+      fireEvent.click(screen.getByRole('button', { name: 'My fixtures' }));
+      expect(screen.queryByTestId('today-divider')).not.toBeInTheDocument();
+      nowSpy.mockRestore();
+    });
+  });
+
+  describe('Sticky filter bar', () => {
+    it('renders the sticky filter bar with an inline top style', () => {
+      render(<FixturesPage />);
+      const bar = screen.getByTestId('sticky-filter-bar');
+      // NavBar mock renders nothing with data-testid="match-banner", so filterTabsTop
+      // falls back to 64 (NavBar height only). The inline style must be set.
+      expect(bar).toHaveStyle({ top: '64px' });
+    });
+
+    it('includes the team filter dropdown inside the sticky bar in the All view', () => {
+      render(<FixturesPage />);
+      const bar = screen.getByTestId('sticky-filter-bar');
+      expect(bar).toContainElement(screen.getByTestId('team-filter'));
+    });
+
+    it('does not render the team filter dropdown inside the sticky bar in My fixtures view', () => {
+      render(<FixturesPage />);
+      fireEvent.click(screen.getByRole('button', { name: 'My fixtures' }));
+      const bar = screen.getByTestId('sticky-filter-bar');
+      expect(bar.querySelector('[data-testid="team-filter"]')).toBeNull();
+    });
+  });
+
+  describe('Live match banner (My fixtures)', () => {
+    const M_LIVE_BOB = {
+      matchId: 'live-bob',
+      homeTeam: 'BRA',
+      awayTeam: 'FRA',
+      homeScore: 1,
+      awayScore: 0,
+      status: 'LIVE' as const,
+      stage: 'GROUP_STAGE',
+      group: 'B',
+      datetime: '2026-06-14T18:00:00Z',
+      venue: 'Wembley',
+      minute: "45'",
+    };
+
+    it('shows the live match banner when the user has a live match', () => {
+      mockClaimedPerson = 'Bob';
+      mockMatches = [M_EARLY, M_MID, M_LIVE_BOB];
+      render(<FixturesPage />);
+      fireEvent.click(screen.getByRole('button', { name: 'My fixtures' }));
+      expect(screen.getByTestId('live-match-banner')).toBeInTheDocument();
+    });
+
+    it('links the live match banner to /feed', () => {
+      mockClaimedPerson = 'Bob';
+      mockMatches = [M_EARLY, M_MID, M_LIVE_BOB];
+      render(<FixturesPage />);
+      fireEvent.click(screen.getByRole('button', { name: 'My fixtures' }));
+      expect(screen.getByTestId('live-match-banner')).toHaveAttribute('href', '/feed');
+    });
+
+    it('hides the live match banner when the user has no live match', () => {
+      // Alice has no LIVE match (only FINISHED).
+      mockClaimedPerson = 'Alice';
+      render(<FixturesPage />);
+      fireEvent.click(screen.getByRole('button', { name: 'My fixtures' }));
+      expect(screen.queryByTestId('live-match-banner')).not.toBeInTheDocument();
+    });
+
+    it('does not show the live match banner in the All view', () => {
+      mockClaimedPerson = 'Bob';
+      mockMatches = [M_EARLY, M_MID, M_LIVE_BOB];
+      render(<FixturesPage />);
+      // Default view is 'all'
+      expect(screen.queryByTestId('live-match-banner')).not.toBeInTheDocument();
+    });
   });
 });

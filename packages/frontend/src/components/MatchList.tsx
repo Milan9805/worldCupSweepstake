@@ -59,7 +59,7 @@ export default function MatchList({
         return (
         <Fragment key={match.matchId}>
         {index === todayDividerIndex && (
-          <div className="flex items-center gap-3 py-1" data-testid="today-divider">
+          <div id="today-divider" className="flex items-center gap-3 py-1" data-testid="today-divider">
             <div className="h-px flex-1 bg-amber-400/40" />
             <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-300">
               Today

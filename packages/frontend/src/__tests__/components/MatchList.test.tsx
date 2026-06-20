@@ -252,6 +252,11 @@ describe('MatchList', () => {
       expect(dividers[0]).toHaveTextContent('Today');
     });
 
+    it('gives the divider the id "today-divider" so the fixtures page can scroll to it', () => {
+      render(<MatchList matches={matches} todayDividerIndex={1} />);
+      expect(document.getElementById('today-divider')).toBeInTheDocument();
+    });
+
     it('places the divider immediately before the match at that index', () => {
       const { container } = render(<MatchList matches={matches} todayDividerIndex={1} />);
       // Walk the list children in DOM order: card 1, divider, card 2, card 3.

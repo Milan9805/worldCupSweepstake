@@ -74,6 +74,22 @@ export function todayDividerIndex(sortedMatches: Match[], now: number): number |
   return idx === -1 ? null : idx;
 }
 
+// Earliest upcoming match belonging to the claimed person, or null if there is
+// none (their teams are all done, or no claimed person). Used by the My Fixtures
+// tab to surface the "Next match" line.
+export function nextMyMatch(
+  matches: Match[],
+  ownersByTeam: Record<string, TeamOwner>,
+  claimedPerson: string | null,
+): Match | null {
+  if (!claimedPerson) return null;
+  return (
+    matches
+      .filter((m) => m.status === 'SCHEDULED' && isMatchMine(m, ownersByTeam, claimedPerson))
+      .sort((a, b) => tsMs(a.datetime) - tsMs(b.datetime))[0] ?? null
+  );
+}
+
 // Empty-state copy, chosen by why the list is empty. Priority: nothing loaded at
 // all wins first, then a team search with no hits, then the 'mine' view with no
 // owned fixtures, then a generic fallback.
