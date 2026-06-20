@@ -33,7 +33,7 @@ export default function GroupsPage() {
     if (!key) {
       router.push('/');
     }
-  }, []);
+  }, [router]);
 
   const groupLetters = [...new Set(teams.map((t) => t.groupLetter))].sort();
   const groupTeams = teams

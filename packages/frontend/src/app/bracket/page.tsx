@@ -24,7 +24,7 @@ export default function TreePage() {
     if (!key) {
       router.push('/');
     }
-  }, []);
+  }, [router]);
 
   // Fetch the bracket initially and refetch whenever the shared matches update
   // (poll tick or manual refresh) — the server recomputes slots from results.
