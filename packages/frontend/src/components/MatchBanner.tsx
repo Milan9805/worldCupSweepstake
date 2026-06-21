@@ -3,7 +3,9 @@
 import Link from 'next/link';
 import { Match, Team } from '@sweepstake/shared';
 import { getTournamentMatchInfo } from '@/lib/teamMatches';
-import { formatMatchDate, formatMatchTime, formatTimeUntil, formatStage } from '@/lib/format';
+import { isGroupStageComplete } from '@/lib/fixtures';
+import { formatMatchDate, formatMatchTime, formatTimeUntil } from '@/lib/format';
+import StageLink from '@/components/StageLink';
 import { useNow } from '@/hooks/useNow';
 import LiveBadge from '@/components/LiveBadge';
 import ChannelPills from '@/components/ChannelPills';
@@ -23,9 +25,11 @@ interface MatchBannerProps {
 // `matches`, so it re-renders for free as the score poll updates them.
 export default function MatchBanner({ matches, teamsByCode, ownersByTeam }: MatchBannerProps) {
   const { live, next } = getTournamentMatchInfo(matches);
+  const groupStageComplete = isGroupStageComplete(matches);
 
-  // Nothing on now and nothing to come — don't render an empty strip.
-  if (live.length === 0 && !next) return null;
+  // Nothing on now, nothing to come, and group stage is still in progress —
+  // don't render an empty strip.
+  if (live.length === 0 && !next && !groupStageComplete) return null;
 
   const teamLabel = (code: string) => {
     const team = teamsByCode[code];
@@ -56,9 +60,13 @@ export default function MatchBanner({ matches, teamsByCode, ownersByTeam }: Matc
               />
             ))}
           </div>
-        ) : (
-          <NextMatchRow match={next!} teamLabel={teamLabel} ownersByTeam={ownersByTeam} />
-        )}
+        ) : next ? (
+          <NextMatchRow match={next} teamLabel={teamLabel} ownersByTeam={ownersByTeam} />
+        ) : groupStageComplete ? (
+          <span className="text-white/60 uppercase tracking-wide text-[11px] font-semibold">
+            Group stage complete
+          </span>
+        ) : null}
         <div className="mt-2 flex items-center gap-5">
           {isLive && (
             <Link
@@ -68,12 +76,22 @@ export default function MatchBanner({ matches, teamsByCode, ownersByTeam }: Matc
               See live feed
             </Link>
           )}
-          <Link
-            href="/fixtures?scroll=today"
-            className="inline-flex items-center min-h-[44px] py-2 text-xs font-semibold uppercase tracking-wide text-gold hover:text-gold/80 underline underline-offset-2 transition-colors"
-          >
-            See all fixtures
-          </Link>
+          {(isLive || next) && (
+            <Link
+              href="/fixtures?scroll=today"
+              className="inline-flex items-center min-h-[44px] py-2 text-xs font-semibold uppercase tracking-wide text-gold hover:text-gold/80 underline underline-offset-2 transition-colors"
+            >
+              See all fixtures
+            </Link>
+          )}
+          {groupStageComplete && (
+            <Link
+              href="/tree"
+              className="inline-flex items-center min-h-[44px] py-2 text-xs font-semibold uppercase tracking-wide text-gold hover:text-gold/80 underline underline-offset-2 transition-colors"
+            >
+              View knockout tree
+            </Link>
+          )}
         </div>
       </div>
     </div>
@@ -97,7 +115,9 @@ function LiveMatchRow({
       <div className="flex items-center gap-1.5 shrink-0">
         <LiveBadge minute={match.minute} layout="inline" />
         <span className="text-red-200 uppercase tracking-wide text-[11px] font-semibold shrink-0">
-          ({formatStage(match)})
+          {'('}
+          <StageLink match={match} className="text-red-200 hover:text-red-100" />
+          {')'}
         </span>
       </div>
       <div className="flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 flex-wrap">
@@ -134,7 +154,9 @@ function NextMatchRow({
     <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4 leading-tight">
       <div className="flex flex-col gap-0.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2 sm:gap-y-1">
         <span className="text-white/60 uppercase tracking-wide text-[11px] font-semibold shrink-0">
-          Next up ({formatStage(match)})
+          {'Next up ('}
+          <StageLink match={match} className="text-white/60 hover:text-white/80" />
+          {')'}
         </span>
         <div className="flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 text-sm sm:text-base flex-wrap">
           <span className="font-semibold text-white">{teamLabel(match.homeTeam)}</span>

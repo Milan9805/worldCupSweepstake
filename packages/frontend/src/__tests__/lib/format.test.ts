@@ -6,6 +6,7 @@ import {
   formatTimeUntil,
   relativeTime,
   relativeTimeLines,
+  stageHref,
 } from '../../lib/format';
 
 describe('formatMatchDate', () => {
@@ -110,6 +111,36 @@ describe('relativeTimeLines', () => {
     // Weekday + day + month on the first line (11 Jun 2026 is a Thursday).
     expect(lines[0]).toMatch(/^Thu 11 Jun$/);
     expect(lines[1]).toMatch(/^\d{2}:\d{2}$/);
+  });
+});
+
+describe('stageHref', () => {
+  const match = (stage: string, group: string | null = null): Match => ({
+    matchId: 'm1',
+    homeTeam: 'ENG',
+    awayTeam: 'FRA',
+    homeScore: null,
+    awayScore: null,
+    status: 'SCHEDULED',
+    stage,
+    group,
+    datetime: '2026-06-14T18:00:00Z',
+    venue: 'Wembley',
+  });
+
+  it('links a group-stage match to the specific group on /groups', () => {
+    expect(stageHref(match('GROUP_STAGE', 'E'))).toBe('/groups?group=E');
+  });
+
+  it('falls back to /groups when the group letter is missing', () => {
+    expect(stageHref(match('GROUP_STAGE', null))).toBe('/groups');
+  });
+
+  it('links every knockout stage to /tree', () => {
+    expect(stageHref(match('ROUND_OF_16'))).toBe('/tree');
+    expect(stageHref(match('QUARTER_FINAL'))).toBe('/tree');
+    expect(stageHref(match('SEMI_FINAL'))).toBe('/tree');
+    expect(stageHref(match('FINAL'))).toBe('/tree');
   });
 });
 

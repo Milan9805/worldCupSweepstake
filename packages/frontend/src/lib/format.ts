@@ -80,6 +80,15 @@ const STAGE_LABELS: Record<string, string> = {
   FINAL: 'Final',
 };
 
+// Navigation target for a stage label: group-stage links to the specific group
+// on /groups (e.g. /groups?group=E); knockout rounds link to the bracket /tree.
+export function stageHref(match: Match): string {
+  if (match.stage === 'GROUP_STAGE') {
+    return match.group ? `/groups?group=${match.group}` : '/groups';
+  }
+  return '/tree';
+}
+
 export function formatStage(match: Match): string {
   if (match.stage === 'GROUP_STAGE') return match.group ? `Group ${match.group}` : 'Group';
   return STAGE_LABELS[match.stage]

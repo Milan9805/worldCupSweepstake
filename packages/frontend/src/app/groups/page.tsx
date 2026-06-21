@@ -24,7 +24,16 @@ const ELIMINATED_CLASSES = 'border-l-red-500/70 bg-red-500/10 opacity-60';
 export default function GroupsPage() {
   const { group, teams, matches, loading } = useGroup();
   const [selectedGroup, setSelectedGroup] = useState<string>('A');
+  // Stays false until the URL param effect fires. Prevents Group A from briefly
+  // rendering before the ?group= param is read.
+  const [paramsReady, setParamsReady] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    const param = new URLSearchParams(window.location.search).get('group');
+    if (param) setSelectedGroup(param);
+    setParamsReady(true);
+  }, []);
 
   // Data comes from the shared group context (which also keeps it fresh while
   // matches are live) — this page only guards against visiting without a key.
@@ -57,7 +66,7 @@ export default function GroupsPage() {
 
   // Only show the full-screen loader on a cold start — when the shared context
   // is already populated, a background reload shouldn't flash it.
-  if (loading && teams.length === 0) {
+  if (!paramsReady || (loading && teams.length === 0)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Spinner label="Loading…" />

@@ -37,9 +37,10 @@ describe('TeamCard', () => {
     expect(screen.getByText('🏴󠁧󠁢󠁥󠁮󠁧󠁿')).toBeInTheDocument();
   });
 
-  it('shows group letter and ranking', () => {
+  it('shows group letter as a link to /groups and shows ranking', () => {
     render(<TeamCard team={makeTeam()} />);
-    expect(screen.getByText(/Group A/)).toBeInTheDocument();
+    const groupLink = screen.getByRole('link', { name: 'Group A' });
+    expect(groupLink).toHaveAttribute('href', '/groups?group=A');
     expect(screen.getByText(/#4/)).toBeInTheDocument();
   });
 
@@ -281,6 +282,42 @@ describe('TeamCard', () => {
         />
       );
       expect(screen.getByText('ITV1')).toHaveStyle({ backgroundColor: '#127b60' });
+    });
+
+    it('shows the group label as a link to /groups?group=A on a live group-stage match', () => {
+      const live = makeMatch({ status: 'LIVE', homeScore: 1, awayScore: 0, stage: 'GROUP_STAGE', group: 'A' });
+      render(
+        <TeamCard team={makeTeam()} matchInfo={{ live, next: null, previous: null }} />
+      );
+      // Two "Group A" links exist: the header and the footer. The footer link points to the same
+      // href; assert at least one footer link has the correct destination.
+      const links = screen.getAllByRole('link', { name: 'Group A' });
+      expect(links.some((l) => l.getAttribute('href') === '/groups?group=A')).toBe(true);
+    });
+
+    it('shows the round label on a live knockout match', () => {
+      const live = makeMatch({ status: 'LIVE', homeScore: 0, awayScore: 0, stage: 'QUARTER_FINAL', group: null });
+      render(
+        <TeamCard team={makeTeam()} matchInfo={{ live, next: null, previous: null }} />
+      );
+      expect(screen.getByText('Quarter Final')).toBeInTheDocument();
+    });
+
+    it('shows the round label on the next fixture for a knockout match', () => {
+      const next = makeMatch({ status: 'SCHEDULED', stage: 'SEMI_FINAL', group: null });
+      render(
+        <TeamCard team={makeTeam()} matchInfo={{ live: null, next, previous: null }} />
+      );
+      expect(screen.getByText('Semi Final')).toBeInTheDocument();
+    });
+
+    it('shows the stage label as a link on the previous result', () => {
+      const previous = makeMatch({ status: 'FINISHED', homeScore: 2, awayScore: 1, stage: 'GROUP_STAGE', group: 'A' });
+      render(
+        <TeamCard team={makeTeam()} matchInfo={{ live: null, next: null, previous }} />
+      );
+      const links = screen.getAllByRole('link', { name: 'Group A' });
+      expect(links.some((l) => l.getAttribute('href') === '/groups?group=A')).toBe(true);
     });
   });
 });

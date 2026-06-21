@@ -3,6 +3,7 @@
 import { Match, Team, ProgressTone, TeamProgress } from '@sweepstake/shared';
 import { TeamMatchInfo } from '@/lib/teamMatches';
 import { formatMatchDate, formatMatchTime } from '@/lib/format';
+import StageLink from '@/components/StageLink';
 import Avatar from '@/components/Avatar';
 import LiveBadge from '@/components/LiveBadge';
 import ChannelPills from '@/components/ChannelPills';
@@ -45,7 +46,10 @@ export default function TeamCard({ team, ownerName, ownerImage, progress, matchI
           <div>
             <h3 className="font-semibold text-sm text-white">{team.name}</h3>
             <span className="text-xs text-white/70">
-              Group {team.groupLetter} • #{team.fifaRanking}
+              <StageLink href={`/groups?group=${team.groupLetter}`} className="hover:text-white/90">
+                Group {team.groupLetter}
+              </StageLink>
+              {' • '}#{team.fifaRanking}
             </span>
           </div>
           {progress && (
@@ -139,6 +143,7 @@ function MatchInfoFooter({
             {live.homeTeam} {live.homeScore} - {live.awayScore} {live.awayTeam}
           </span>
           <OwnerTag owner={opponentOwner(live)} />
+          <StageLink match={live} className="text-[10px] text-white/50 shrink-0 hover:text-white/70" />
         </div>
       ) : (
         <>
@@ -151,6 +156,7 @@ function MatchInfoFooter({
               </span>
               <ResultTag team={team} match={previous} />
               <OwnerTag owner={opponentOwner(previous)} />
+              <StageLink match={previous} className="text-[10px] text-white/50 shrink-0 hover:text-white/70" />
             </div>
           )}
           {next && (
@@ -162,6 +168,7 @@ function MatchInfoFooter({
                   {formatMatchTime(next.datetime)}
                 </span>
                 <OwnerTag owner={opponentOwner(next)} />
+                <StageLink match={next} className="text-[10px] text-white/50 shrink-0 hover:text-white/70" />
               </div>
               <ChannelPills channels={next.channels} />
             </div>

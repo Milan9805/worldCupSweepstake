@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Team } from '@sweepstake/shared';
 import { MatchEventGroup, displayTs, isGroupExpandedByDefault, isGroupMine } from '@/lib/feedGroups';
 import { relativeTimeLines } from '@/lib/format';
+import StageLink from '@/components/StageLink';
 import { TeamOwner } from '@/lib/owners';
 import LiveBadge from '@/components/LiveBadge';
 import MatchScoreline from '@/components/MatchScoreline';
@@ -60,10 +61,18 @@ export default function FeedMatchGroup({
         data-testid="feed-group-header"
         className="w-full flex items-center gap-2 p-3 text-left rounded-lg hover:bg-white/5 transition-colors"
       >
-        {/* Empty left gutter mirrors the right column's width so the matchup sits
-            centred in the card, the same way the groups-page fixtures balance
-            their date column against the status column. */}
-        <div className="w-16 shrink-0" aria-hidden="true" />
+        {/* Left gutter mirrors the right column's width to keep the matchup
+            centred. For match groups it also shows the stage label (Group E,
+            Round of 16, …) as a link, matching the Fixtures page layout. */}
+        <div className="w-16 shrink-0 text-center text-xs leading-tight text-white/50">
+          {group.match && (
+            <StageLink
+              match={group.match}
+              className="text-[10px] text-white/40 hover:text-white/60"
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
+        </div>
 
         <div className="flex-1 min-w-0">
           {group.match ? (

@@ -3,6 +3,7 @@ import {
   isMatchMine,
   filterFixtures,
   fixturesEmptyMessage,
+  isGroupStageComplete,
   londonDayKey,
   nextMyMatch,
   todayDividerIndex,
@@ -218,6 +219,59 @@ describe('nextMyMatch', () => {
       makeMatch({ matchId: 'm1', homeTeam: 'FRA', awayTeam: 'ITA', status: 'SCHEDULED' }),
     ];
     expect(nextMyMatch(matches, OWNERS, 'Alice')).toBeNull();
+  });
+});
+
+describe('isGroupStageComplete', () => {
+  it('returns false for an empty match array', () => {
+    expect(isGroupStageComplete([])).toBe(false);
+  });
+
+  it('returns false when no group-stage matches exist (all knockout)', () => {
+    const matches = [
+      makeMatch({ matchId: 'sf', stage: 'SEMI_FINAL', group: null, status: 'FINISHED' }),
+    ];
+    expect(isGroupStageComplete(matches)).toBe(false);
+  });
+
+  it('returns false when group matches exist but none are finished', () => {
+    const matches = [
+      makeMatch({ matchId: 'm1', stage: 'GROUP_STAGE', status: 'SCHEDULED' }),
+      makeMatch({ matchId: 'm2', stage: 'GROUP_STAGE', status: 'SCHEDULED' }),
+    ];
+    expect(isGroupStageComplete(matches)).toBe(false);
+  });
+
+  it('returns false when some group matches are still scheduled', () => {
+    const matches = [
+      makeMatch({ matchId: 'm1', stage: 'GROUP_STAGE', status: 'FINISHED' }),
+      makeMatch({ matchId: 'm2', stage: 'GROUP_STAGE', status: 'SCHEDULED' }),
+    ];
+    expect(isGroupStageComplete(matches)).toBe(false);
+  });
+
+  it('returns false when a group match is live', () => {
+    const matches = [
+      makeMatch({ matchId: 'm1', stage: 'GROUP_STAGE', status: 'FINISHED' }),
+      makeMatch({ matchId: 'm2', stage: 'GROUP_STAGE', status: 'LIVE' }),
+    ];
+    expect(isGroupStageComplete(matches)).toBe(false);
+  });
+
+  it('returns true when all group matches are finished', () => {
+    const matches = [
+      makeMatch({ matchId: 'm1', stage: 'GROUP_STAGE', status: 'FINISHED' }),
+      makeMatch({ matchId: 'm2', stage: 'GROUP_STAGE', status: 'FINISHED' }),
+    ];
+    expect(isGroupStageComplete(matches)).toBe(true);
+  });
+
+  it('returns true when group matches are done and knockout matches are in progress', () => {
+    const matches = [
+      makeMatch({ matchId: 'm1', stage: 'GROUP_STAGE', status: 'FINISHED' }),
+      makeMatch({ matchId: 'qf', stage: 'QUARTER_FINAL', group: null, status: 'LIVE' }),
+    ];
+    expect(isGroupStageComplete(matches)).toBe(true);
   });
 });
 

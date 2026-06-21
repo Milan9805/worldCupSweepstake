@@ -112,4 +112,35 @@ describe('FeedMatchGroup', () => {
     expect(screen.queryByText('LIVE')).not.toBeInTheDocument();
     expect(screen.getByText('Bracket drawn')).toBeInTheDocument();
   });
+
+  it('shows the group label as a link to /groups?group=A for a group-stage match', () => {
+    renderGroup(makeMatch({ stage: 'GROUP_STAGE', group: 'A', status: 'FINISHED' }));
+    const link = screen.getByRole('link', { name: 'Group A' });
+    expect(link).toHaveAttribute('href', '/groups?group=A');
+  });
+
+  it('shows the round label as a link to /tree for a knockout match', () => {
+    renderGroup(makeMatch({ stage: 'ROUND_OF_16', group: null, status: 'FINISHED' }));
+    const link = screen.getByRole('link', { name: 'Round of 16' });
+    expect(link).toHaveAttribute('href', '/tree');
+  });
+
+  it('does not show a stage label for the synthetic "Tournament" group', () => {
+    const events = [
+      { eventId: 'b1', ts: '2026-06-12T19:00:00Z', type: 'BRACKET_DRAWN' as const, payload: { slots: 16 } },
+    ];
+    const [group] = groupEventsByMatch(events, []);
+    render(
+      <FeedMatchGroup
+        group={group}
+        teamsByCode={TEAMS}
+        teamFlags={FLAGS}
+        ownersByTeam={OWNERS}
+        claimedPerson="Alice"
+        now={Date.parse('2026-06-12T20:15:00Z')}
+      />,
+    );
+    // No match means no stage label — only the "Tournament" heading.
+    expect(screen.queryByText(/Group|Round of|Final/)).not.toBeInTheDocument();
+  });
 });

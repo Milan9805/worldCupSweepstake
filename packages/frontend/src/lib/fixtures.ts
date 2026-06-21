@@ -90,6 +90,13 @@ export function nextMyMatch(
   );
 }
 
+// True once every group-stage match is finished — used to surface the
+// knockout-tree link. Returns false if there are no group-stage matches.
+export function isGroupStageComplete(matches: Match[]): boolean {
+  const groupMatches = matches.filter((m) => m.stage === 'GROUP_STAGE');
+  return groupMatches.length > 0 && groupMatches.every((m) => m.status === 'FINISHED');
+}
+
 // Empty-state copy, chosen by why the list is empty. Priority: nothing loaded at
 // all wins first, then a team search with no hits, then the 'mine' view with no
 // owned fixtures, then a generic fallback.

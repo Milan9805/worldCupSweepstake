@@ -2,7 +2,8 @@
 
 import { Fragment } from 'react';
 import { Match } from '@sweepstake/shared';
-import { formatMatchDate, formatMatchTime, formatStage } from '@/lib/format';
+import { formatMatchDate, formatMatchTime } from '@/lib/format';
+import StageLink from '@/components/StageLink';
 import { isMatchMine } from '@/lib/fixtures';
 import LiveBadge from '@/components/LiveBadge';
 import MatchScoreline from '@/components/MatchScoreline';
@@ -81,7 +82,7 @@ export default function MatchList({
               <div className="whitespace-nowrap">{formatMatchDate(match.datetime).replace(',', '')}</div>
               <div>{formatMatchTime(match.datetime)}</div>
               {showStage && (
-                <div className="mt-0.5 text-[10px] leading-tight text-white/50">{formatStage(match)}</div>
+                <StageLink match={match} className="block mt-0.5 text-[10px] leading-tight text-white/50 hover:text-white/70" />
               )}
             </div>
 

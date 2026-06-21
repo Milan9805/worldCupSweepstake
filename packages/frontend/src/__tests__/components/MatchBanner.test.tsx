@@ -81,8 +81,9 @@ describe('MatchBanner', () => {
     jest.useRealTimers();
   });
 
-  it('renders nothing when there are no live or upcoming matches', () => {
-    const finished = makeMatch({ status: 'FINISHED', homeScore: 1, awayScore: 0 });
+  it('renders nothing when there are no live or upcoming matches and group stage is not done', () => {
+    // A finished knockout match with no group-stage matches: nothing to show.
+    const finished = makeMatch({ status: 'FINISHED', homeScore: 1, awayScore: 0, stage: 'QUARTER_FINAL', group: null });
     const { container } = render(
       <MatchBanner matches={[finished]} teamsByCode={teamsByCode} ownersByTeam={owners} />
     );
@@ -108,21 +109,26 @@ describe('MatchBanner', () => {
       expect(screen.getByText(/Next up/i)).toBeInTheDocument();
     });
 
-    it('includes the group-stage label in the "Next up" caption', () => {
+    it('includes the group-stage label in the "Next up" caption as a link to /groups', () => {
       const groupE = makeMatch({ status: 'SCHEDULED', stage: 'GROUP_STAGE', group: 'E' });
       render(<MatchBanner matches={[groupE]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
-      expect(screen.getByText(/Next up \(Group E\)/i)).toBeInTheDocument();
+      expect(screen.getByText(/Next up/i)).toBeInTheDocument();
+      const link = screen.getByRole('link', { name: 'Group E' });
+      expect(link).toHaveAttribute('href', '/groups?group=E');
     });
 
-    it('includes the knockout-round label in the "Next up" caption', () => {
+    it('includes the knockout-round label in the "Next up" caption as a link to /tree', () => {
       const roundOf16 = makeMatch({ status: 'SCHEDULED', stage: 'ROUND_OF_16', group: null });
       render(<MatchBanner matches={[roundOf16]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
-      expect(screen.getByText(/Next up \(Round of 16\)/i)).toBeInTheDocument();
+      expect(screen.getByText(/Next up/i)).toBeInTheDocument();
+      const link = screen.getByRole('link', { name: 'Round of 16' });
+      expect(link).toHaveAttribute('href', '/tree');
     });
 
     it('renders the label, matchup and times together (clean line stack)', () => {
       render(<MatchBanner matches={[next]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
-      expect(screen.getByText(/Next up \(Group E\)/i)).toBeInTheDocument(); // label line
+      expect(screen.getByText(/Next up/i)).toBeInTheDocument(); // label line
+      expect(screen.getByRole('link', { name: 'Group E' })).toBeInTheDocument(); // stage link
       expect(screen.getByText('🇩🇪 GER')).toBeInTheDocument(); // matchup line
       expect(screen.getByText('in 2h 15m')).toBeInTheDocument(); // times line
     });
@@ -274,7 +280,29 @@ describe('MatchBanner', () => {
 
     it('shows the stage label beside the LIVE badge', () => {
       render(<MatchBanner matches={[liveA]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
-      expect(screen.getByText('(Group E)')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Group E' })).toBeInTheDocument();
+    });
+
+    it('the live stage label is a link to /groups for a group match', () => {
+      render(<MatchBanner matches={[liveA]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
+      const link = screen.getByRole('link', { name: 'Group E' });
+      expect(link).toHaveAttribute('href', '/groups?group=E');
+    });
+
+    it('the live stage label links to /tree for a knockout match', () => {
+      const sf = makeMatch({
+        matchId: 'sf',
+        status: 'LIVE',
+        stage: 'SEMI_FINAL',
+        group: null,
+        homeScore: 0,
+        awayScore: 0,
+        minute: "60'",
+        datetime: new Date(NOW - H).toISOString(),
+      });
+      render(<MatchBanner matches={[sf]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
+      const link = screen.getByRole('link', { name: 'Semi Final' });
+      expect(link).toHaveAttribute('href', '/tree');
     });
 
     it('shows each live match its own stage label', () => {
@@ -299,14 +327,14 @@ describe('MatchBanner', () => {
         datetime: new Date(NOW - 30 * M).toISOString(),
       });
       render(<MatchBanner matches={[groupGame, semi]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
-      expect(screen.getByText('(Group E)')).toBeInTheDocument();
-      expect(screen.getByText('(Semi Final)')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Group E' })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Semi Final' })).toBeInTheDocument();
     });
 
     it('renders the badge, stage and score together for a live match', () => {
       render(<MatchBanner matches={[liveA]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
       expect(screen.getByText('LIVE')).toBeInTheDocument(); // badge line
-      expect(screen.getByText('(Group E)')).toBeInTheDocument(); // stage on the badge line
+      expect(screen.getByRole('link', { name: 'Group E' })).toBeInTheDocument(); // stage link
       expect(screen.getByText('2 - 1')).toBeInTheDocument(); // matchup/score line
     });
 
@@ -374,6 +402,81 @@ describe('MatchBanner', () => {
       render(<MatchBanner matches={[next]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
       const banner = screen.getByTestId('match-banner');
       expect(banner).toHaveClass('sticky', 'top-16', 'z-40');
+    });
+  });
+
+  describe('group stage complete', () => {
+    const finishedGroupMatch = makeMatch({ status: 'FINISHED', homeScore: 1, awayScore: 0 });
+
+    it('renders nothing when all matches are finished but there were no group-stage matches', () => {
+      const knockout = makeMatch({ status: 'FINISHED', homeScore: 1, awayScore: 0, stage: 'SEMI_FINAL', group: null });
+      const { container } = render(
+        <MatchBanner matches={[knockout]} teamsByCode={teamsByCode} ownersByTeam={owners} />
+      );
+      expect(container.firstChild).toBeNull();
+    });
+
+    it('renders the banner even with no live or upcoming matches once group stage is done', () => {
+      render(
+        <MatchBanner matches={[finishedGroupMatch]} teamsByCode={teamsByCode} ownersByTeam={owners} />
+      );
+      expect(screen.getByTestId('match-banner')).toBeInTheDocument();
+    });
+
+    it('hides the "See all fixtures" link when there are no live/upcoming matches', () => {
+      render(
+        <MatchBanner matches={[finishedGroupMatch]} teamsByCode={teamsByCode} ownersByTeam={owners} />
+      );
+      expect(screen.queryByRole('link', { name: /See all fixtures/i })).not.toBeInTheDocument();
+    });
+
+    it('shows "Group stage complete" text when all group matches are done', () => {
+      render(
+        <MatchBanner matches={[finishedGroupMatch]} teamsByCode={teamsByCode} ownersByTeam={owners} />
+      );
+      expect(screen.getByText(/Group stage complete/i)).toBeInTheDocument();
+    });
+
+    it('shows a "View knockout tree" link pointing to /tree', () => {
+      render(
+        <MatchBanner matches={[finishedGroupMatch]} teamsByCode={teamsByCode} ownersByTeam={owners} />
+      );
+      const link = screen.getByRole('link', { name: /View knockout tree/i });
+      expect(link).toHaveAttribute('href', '/tree');
+    });
+
+    it('shows the tree link alongside live knockout match info', () => {
+      const liveKnockout = makeMatch({
+        matchId: 'qf',
+        stage: 'QUARTER_FINAL',
+        group: null,
+        status: 'LIVE',
+        homeScore: 0,
+        awayScore: 0,
+        minute: "10'",
+        datetime: new Date(NOW - H).toISOString(),
+      });
+      render(
+        <MatchBanner matches={[finishedGroupMatch, liveKnockout]} teamsByCode={teamsByCode} ownersByTeam={owners} />
+      );
+      expect(screen.getByText('LIVE')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /View knockout tree/i })).toBeInTheDocument();
+    });
+
+    it('does not show the tree link while group stage matches are unfinished', () => {
+      const scheduled = makeMatch({ status: 'SCHEDULED' });
+      render(
+        <MatchBanner matches={[scheduled]} teamsByCode={teamsByCode} ownersByTeam={owners} />
+      );
+      expect(screen.queryByRole('link', { name: /View knockout tree/i })).not.toBeInTheDocument();
+    });
+
+    it('does not show "Group stage complete" while matches are still in progress', () => {
+      const live = makeMatch({ status: 'LIVE', homeScore: 1, awayScore: 0, minute: "60'", datetime: new Date(NOW - H).toISOString() });
+      render(
+        <MatchBanner matches={[live]} teamsByCode={teamsByCode} ownersByTeam={owners} />
+      );
+      expect(screen.queryByText(/Group stage complete/i)).not.toBeInTheDocument();
     });
   });
 });
