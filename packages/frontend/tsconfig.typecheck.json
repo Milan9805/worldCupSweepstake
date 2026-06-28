@@ -1,0 +1,16 @@
+{
+  "//": "Standalone type-check config. Same settings as tsconfig.json but it never includes the generated .next/types route validators — those are written (and type-checked) by `next build`, and a stale copy left over after deleting a route would otherwise fail an ad-hoc `tsc` run. Use `npm run typecheck`; `next build` still validates route types itself.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    ".next"
+  ]
+}

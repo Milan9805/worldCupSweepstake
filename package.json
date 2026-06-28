@@ -15,6 +15,7 @@
     "test:components": "npm run test --workspace=packages/frontend",
     "test:e2e": "npm run test:e2e --workspace=packages/frontend",
     "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
     "dev": "npm run dev --workspace=packages/frontend",
     "deploy": "bash scripts/deploy.sh",
     "seed": "npx ts-node --project scripts/tsconfig.json scripts/seed.ts",

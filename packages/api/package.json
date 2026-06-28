@@ -5,6 +5,7 @@
   "main": "./src/index.ts",
   "scripts": {
     "build": "tsc",
+    "typecheck": "tsc --noEmit",
     "dev": "ts-node src/local-server.ts",
     "test": "jest",
     "lint": "eslint src/"

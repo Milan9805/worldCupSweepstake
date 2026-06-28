@@ -4,6 +4,13 @@ import path from 'path';
 const publicDir = path.join(__dirname, '../../../public');
 const manifestPath = path.join(publicDir, 'manifest.webmanifest');
 
+interface ManifestIcon {
+  src: string;
+  sizes: string;
+  purpose?: string;
+  type?: string;
+}
+
 describe('PWA web app manifest', () => {
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 
@@ -16,11 +23,11 @@ describe('PWA web app manifest', () => {
   });
 
   it('declares 192, 512 and a maskable icon', () => {
-    const sizes = manifest.icons.map((icon) => icon.sizes);
+    const sizes = manifest.icons.map((icon: ManifestIcon) => icon.sizes);
     expect(sizes).toContain('192x192');
     expect(sizes).toContain('512x512');
 
-    const purposes = manifest.icons.map((icon) => icon.purpose);
+    const purposes = manifest.icons.map((icon: ManifestIcon) => icon.purpose);
     expect(purposes).toContain('maskable');
   });
 

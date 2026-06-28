@@ -14,7 +14,7 @@ describe('Digital Asset Links (assetlinks.json)', () => {
   const statements = JSON.parse(fs.readFileSync(assetlinksPath, 'utf8'));
   const target = statements[0].target;
   const fingerprints = target.sha256_cert_fingerprints;
-  const isPlaceholder = fingerprints.every((fp) => fp === PLACEHOLDER);
+  const isPlaceholder = fingerprints.every((fp: string) => fp === PLACEHOLDER);
 
   it('has the Trusted Web Activity statement shape', () => {
     expect(statements[0].relation).toContain(

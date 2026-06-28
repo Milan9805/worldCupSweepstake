@@ -9,32 +9,51 @@ const swSource = fs.readFileSync(
 
 const CACHE = 'sweepstake-v2';
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
-const keyOf = (req) => (typeof req === 'string' ? req : req.url);
+
+// A cache key is either a URL string or a Request-like object with a url.
+type CacheKey = string | { url: string };
+const keyOf = (req: CacheKey): string => (typeof req === 'string' ? req : req.url);
+
+// Minimal stand-ins for the ServiceWorker event objects sw.js receives. The
+// listeners assign onto these (waitUntil/respondWith), so every field is
+// optional and filled in per test.
+interface SwEvent {
+  request?: { url: string; method: string };
+  waitUntil?: (p: Promise<unknown>) => void;
+  respondWith?: (p: Promise<unknown>) => void;
+  promise?: Promise<unknown>;
+  response?: Promise<unknown>;
+}
+type SwListener = (event: SwEvent) => void;
+
+interface SetupOptions {
+  fetchImpl?: (...args: unknown[]) => Promise<unknown>;
+}
 
 // Build a sandbox with mocked ServiceWorker globals, run sw.js inside it, and
 // hand back the captured event listeners plus the cache state for assertions.
-function setup(options = {}) {
-  const listeners = {};
-  const stores = new Map(); // cacheName -> Map(key -> response)
+function setup(options: SetupOptions = {}) {
+  const listeners: Record<string, SwListener> = {};
+  const stores = new Map<string, Map<string, unknown>>(); // cacheName -> Map(key -> response)
 
-  const makeCache = (store) => ({
-    addAll: async (urls) => {
+  const makeCache = (store: Map<string, unknown>) => ({
+    addAll: async (urls: string[]) => {
       urls.forEach((url) => store.set(url, { shell: url }));
     },
-    put: async (req, res) => {
+    put: async (req: CacheKey, res: unknown) => {
       store.set(keyOf(req), res);
     },
-    match: async (req) => store.get(keyOf(req)),
+    match: async (req: CacheKey) => store.get(keyOf(req)),
   });
 
   const caches = {
-    open: async (name) => {
+    open: async (name: string) => {
       if (!stores.has(name)) stores.set(name, new Map());
-      return makeCache(stores.get(name));
+      return makeCache(stores.get(name)!);
     },
     keys: async () => Array.from(stores.keys()),
-    delete: async (name) => stores.delete(name),
-    match: async (req) => {
+    delete: async (name: string) => stores.delete(name),
+    match: async (req: CacheKey) => {
       for (const store of stores.values()) {
         const hit = store.get(keyOf(req));
         if (hit) return hit;
@@ -44,7 +63,7 @@ function setup(options = {}) {
   };
 
   const self = {
-    addEventListener: (type, fn) => {
+    addEventListener: (type: string, fn: SwListener) => {
       listeners[type] = fn;
     },
     skipWaiting: jest.fn(async () => {}),
@@ -64,7 +83,7 @@ function setup(options = {}) {
 describe('service worker (sw.js)', () => {
   it('pre-caches the app shell and skips waiting on install', async () => {
     const { listeners, stores, self } = setup();
-    const event = {};
+    const event: SwEvent = {};
     event.waitUntil = (p) => {
       event.promise = p;
     };
@@ -72,7 +91,7 @@ describe('service worker (sw.js)', () => {
     listeners.install(event);
     await event.promise;
 
-    const shell = stores.get(CACHE);
+    const shell = stores.get(CACHE)!;
     expect(shell.has('/')).toBe(true);
     expect(shell.has('/index.html')).toBe(true);
     expect(shell.has('/manifest.webmanifest')).toBe(true);
@@ -83,7 +102,7 @@ describe('service worker (sw.js)', () => {
     const { listeners, stores, self } = setup();
     stores.set('sweepstake-v0', new Map([['/stale', {}]]));
     stores.set(CACHE, new Map());
-    const event = {};
+    const event: SwEvent = {};
     event.waitUntil = (p) => {
       event.promise = p;
     };
@@ -102,7 +121,7 @@ describe('service worker (sw.js)', () => {
       fetchImpl: async () => netResponse,
     });
     const request = { url: '/dashboard.html', method: 'GET' };
-    const event = { request };
+    const event: SwEvent = { request };
     event.respondWith = (p) => {
       event.response = p;
     };
@@ -113,7 +132,7 @@ describe('service worker (sw.js)', () => {
     expect(result).toBe(netResponse);
     expect(fetchMock).toHaveBeenCalledWith(request);
     await flush(); // let the fire-and-forget cache write settle
-    expect(stores.get(CACHE).get('/dashboard.html')).toEqual({ cloned: true });
+    expect(stores.get(CACHE)!.get('/dashboard.html')).toEqual({ cloned: true });
   });
 
   it('does not cache a non-OK response (e.g. a pruned hashed asset)', async () => {
@@ -122,7 +141,7 @@ describe('service worker (sw.js)', () => {
       fetchImpl: async () => notFound,
     });
     const request = { url: '/_next/static/chunks/old-hash.css', method: 'GET' };
-    const event = { request };
+    const event: SwEvent = { request };
     event.respondWith = (p) => {
       event.response = p;
     };
@@ -145,7 +164,7 @@ describe('service worker (sw.js)', () => {
       },
     });
     stores.set(CACHE, new Map([['/dashboard.html', cached]]));
-    const event = { request: { url: '/dashboard.html', method: 'GET' } };
+    const event: SwEvent = { request: { url: '/dashboard.html', method: 'GET' } };
     event.respondWith = (p) => {
       event.response = p;
     };
@@ -162,7 +181,7 @@ describe('service worker (sw.js)', () => {
       },
     });
     stores.set(CACHE, new Map([['/index.html', indexShell]]));
-    const event = { request: { url: '/never-cached.html', method: 'GET' } };
+    const event: SwEvent = { request: { url: '/never-cached.html', method: 'GET' } };
     event.respondWith = (p) => {
       event.response = p;
     };
@@ -174,7 +193,7 @@ describe('service worker (sw.js)', () => {
   it('ignores non-GET requests', () => {
     const { listeners, fetchMock } = setup();
     let responded = false;
-    const event = {
+    const event: SwEvent = {
       request: { url: '/api/admin/login', method: 'POST' },
       respondWith: () => {
         responded = true;

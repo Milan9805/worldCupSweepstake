@@ -8,6 +8,7 @@
     "start": "next start",
     "preview": "next build && npx --yes serve out -l 3000",
     "lint": "eslint src/",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "test": "jest",
     "test:e2e": "playwright test"
   },
