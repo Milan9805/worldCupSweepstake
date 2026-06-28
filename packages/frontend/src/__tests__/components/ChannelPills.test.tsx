@@ -9,12 +9,36 @@ describe('ChannelPills', () => {
       <ChannelPills
         channels={[
           { name: 'ITV1', bg: '#127b60', fg: '#ffffff' },
-          { name: 'STV', bg: '#1d4ed8', fg: '#ffffff' },
+          { name: 'BBC One', bg: '#1d4ed8', fg: '#ffffff' },
         ]}
       />
     );
     expect(screen.getByText('ITV1')).toBeInTheDocument();
-    expect(screen.getByText('STV')).toBeInTheDocument();
+    expect(screen.getByText('BBC One')).toBeInTheDocument();
+  });
+
+  it('hides the Scotland-only STV / STV Player feeds', () => {
+    render(
+      <ChannelPills
+        channels={[
+          { name: 'ITV1', bg: '#127b60', fg: '#ffffff' },
+          { name: 'STV', bg: '#032baa', fg: '#fafafa' },
+          { name: 'ITVX', bg: '#102c3e', fg: '#deeb52' },
+          { name: 'STV Player', bg: '#032baa', fg: '#fafafa' },
+        ]}
+      />
+    );
+    expect(screen.getByText('ITV1')).toBeInTheDocument();
+    expect(screen.getByText('ITVX')).toBeInTheDocument();
+    expect(screen.queryByText('STV')).not.toBeInTheDocument();
+    expect(screen.queryByText('STV Player')).not.toBeInTheDocument();
+  });
+
+  it('renders nothing when only hidden channels are present', () => {
+    const { container } = render(
+      <ChannelPills channels={[{ name: 'STV', bg: '', fg: '' }, { name: 'STV Player', bg: '', fg: '' }]} />,
+    );
+    expect(container.firstChild).toBeNull();
   });
 
   it('applies the channel brand colours', () => {
