@@ -137,3 +137,60 @@ test.describe('Groups page — deep link navigation', () => {
     await expect(page.getByRole('button', { name: 'Group A' })).not.toHaveClass(/bg-accent/);
   });
 });
+
+// A completed single group: the 3rd-placed team has clinched a best-third spot,
+// so it should read as Qualified (green), while the eliminated 4th shows red.
+const FINISHED_STATS = (points: number, gd: number) => ({
+  played: 3, wins: 0, draws: 0, losses: 0, goalsFor: 5, goalsAgainst: 5 - gd,
+  goalDifference: gd, points, yellowCards: 0, redCards: 0, possession: null, xG: null,
+});
+const completeTeam = (
+  teamCode: string, name: string, points: number, gd: number, eliminated = false,
+) => ({
+  teamCode, name, flag: '🏳️', fifaRanking: 5, groupLetter: 'A',
+  stats: FINISHED_STATS(points, gd), eliminated, eliminatedAt: eliminated ? 'Group Stage' : null,
+});
+
+const COMPLETE_TEAMS = [
+  completeTeam('ENG', 'England', 9, 5),
+  completeTeam('FRA', 'France', 6, 2),
+  completeTeam('GER', 'Germany', 3, 0), // 3rd → best-third qualifier
+  completeTeam('ESP', 'Spain', 0, -7, true), // 4th → eliminated
+];
+const COMPLETE_GROUP = {
+  groupKey: 'test-group',
+  groupName: 'Test Group',
+  members: [{ name: 'Alice', imageUrl: null, teams: ['ENG'] }],
+};
+
+async function mockCompleteGroup(page: Page) {
+  await page.route('**/api/**', async (route) => {
+    const url = route.request().url();
+    const send = (data: unknown) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data }) });
+    if (url.includes('/api/teams')) return send(COMPLETE_TEAMS);
+    if (url.includes('/api/matches')) return send([]);
+    if (url.includes('/api/group/')) return send(COMPLETE_GROUP);
+    if (url.includes('/api/feed')) return send([]);
+    if (url.includes('/api/refresh')) return send({ matches: [], teams: COMPLETE_TEAMS });
+    return send(null);
+  });
+}
+
+test.describe('Groups page — completed-group qualification', () => {
+  test('marks the qualifying third place green and the eliminated fourth red', async ({ page }) => {
+    await seedRegistry(page);
+    await mockCompleteGroup(page);
+    await page.goto('/groups');
+
+    await expect(page.getByRole('heading', { name: 'Group Stages' })).toBeVisible();
+
+    // 3rd-placed Germany has clinched a best-third spot → Qualified (emerald).
+    const germanyRow = page.locator('tr', { hasText: 'Germany' });
+    await expect(germanyRow).toHaveClass(/bg-emerald-400\/15/);
+
+    // 4th-placed Spain is out → eliminated (red).
+    const spainRow = page.locator('tr', { hasText: 'Spain' });
+    await expect(spainRow).toHaveClass(/bg-red-500\/10/);
+  });
+});

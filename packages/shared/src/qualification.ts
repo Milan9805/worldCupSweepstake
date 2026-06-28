@@ -69,8 +69,17 @@ export type GroupZone = 'QUALIFIED' | 'TOP_TWO' | 'THIRD' | 'NONE';
  * Map each team to its qualification zone. Expects `groupTeams` already in
  * standings order (best first); positions drive the live `TOP_TWO` / `THIRD`
  * zones while {@link clinchedTopTwo} drives the confirmed `QUALIFIED` zone.
+ *
+ * `qualifiedThirds` (optional) is the set of third-placed team codes that have
+ * secured one of the best-third-placed knockout spots — known only once the
+ * group stage is complete and computed across all groups. When a group's
+ * third-placed team is in that set its zone is promoted from the live `THIRD`
+ * (still in the running) to the confirmed `QUALIFIED`.
  */
-export function groupZones(groupTeams: Team[]): Map<string, GroupZone> {
+export function groupZones(
+  groupTeams: Team[],
+  qualifiedThirds?: Set<string>,
+): Map<string, GroupZone> {
   const clinched = clinchedTopTwo(groupTeams);
   const zones = new Map<string, GroupZone>();
   groupTeams.forEach((team, idx) => {
@@ -80,7 +89,7 @@ export function groupZones(groupTeams: Team[]): Map<string, GroupZone> {
     } else if (idx < 2) {
       zone = 'TOP_TWO';
     } else if (idx === 2) {
-      zone = 'THIRD';
+      zone = qualifiedThirds?.has(team.teamCode) ? 'QUALIFIED' : 'THIRD';
     } else {
       zone = 'NONE';
     }

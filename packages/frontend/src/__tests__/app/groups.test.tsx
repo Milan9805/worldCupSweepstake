@@ -108,4 +108,50 @@ describe('GroupsPage', () => {
     rerender(<GroupsPage />);
     expect(screen.getByText('1 matches')).toBeInTheDocument();
   });
+
+  describe('qualified third place', () => {
+    const stats = (points: number, gd: number, gf: number) => ({
+      played: 3, wins: 0, draws: 0, losses: 0,
+      goalsFor: gf, goalsAgainst: gf - gd, goalDifference: gd, points,
+      yellowCards: 0, redCards: 0, possession: null, xG: null,
+    });
+    const team = (teamCode: string, groupLetter: string, points: number, gd: number, gf: number, name = teamCode) => ({
+      teamCode, name, groupLetter, fifaRanking: 10, flag: '🏳️', eliminated: false, eliminatedAt: null,
+      stats: stats(points, gd, gf),
+    });
+
+    // A full 48-team tournament. Group A's third place (named "ThirdA") has the
+    // best record of any third-placed team, so it takes a best-third spot.
+    const fullTournament = () => {
+      const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
+      return letters.flatMap((L) => [
+        team(`${L}1`, L, 9, 6, 8),
+        team(`${L}2`, L, 6, 3, 5),
+        team(`${L}3`, L, L === 'A' ? 4 : 3, -1, 3, L === 'A' ? 'ThirdA' : `${L}3`),
+        team(`${L}4`, L, 0, -8, 1),
+      ]);
+    };
+
+    it('marks a qualifying third-placed team as Qualified once the group stage is complete', () => {
+      mockTeams = fullTournament();
+      mockGroup = seedGroup;
+      render(<GroupsPage />);
+      const row = screen.getByText('ThirdA').closest('tr');
+      // Bright-emerald QUALIFIED accent, not the amber THIRD accent.
+      expect(row).toHaveClass('border-l-emerald-400');
+      expect(row).not.toHaveClass('border-l-amber-400/70');
+    });
+
+    it('leaves the third-placed team as 3rd place while the group stage is still running', () => {
+      const teams = fullTournament();
+      // One unfinished match elsewhere → the group stage is not complete.
+      teams.find((t) => t.teamCode === 'L1')!.stats.played = 2;
+      mockTeams = teams;
+      mockGroup = seedGroup;
+      render(<GroupsPage />);
+      const row = screen.getByText('ThirdA').closest('tr');
+      expect(row).toHaveClass('border-l-amber-400/70');
+      expect(row).not.toHaveClass('border-l-emerald-400');
+    });
+  });
 });

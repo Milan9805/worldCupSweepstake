@@ -7,7 +7,13 @@ import Spinner from '@/components/Spinner';
 import MatchList from '@/components/MatchList';
 import { useGroup } from '@/hooks/GroupContext';
 import { buildOwnersByTeam } from '@/lib/owners';
-import { GroupZone, groupZones } from '@sweepstake/shared';
+import {
+  GroupZone,
+  groupZones,
+  isGroupStageComplete,
+  computeGroupStandings,
+  determineQualifiedTeams,
+} from '@sweepstake/shared';
 
 // Left accent bar + subtle fill per qualification zone. Bright emerald/amber
 // reads clearly against the dark-green app background; a confirmed (clinched)
@@ -49,8 +55,16 @@ export default function GroupsPage() {
     .filter((t) => t.groupLetter === selectedGroup)
     .sort((a, b) => b.stats.points - a.stats.points || b.stats.goalDifference - a.stats.goalDifference);
 
+  // Once every group is decided, the best third-placed teams that grabbed a
+  // knockout spot are confirmed through — surface them as Qualified (green)
+  // rather than the live "3rd place" amber. Computed across all groups since the
+  // best-third race spans the whole tournament.
+  const qualifiedThirds = isGroupStageComplete(teams)
+    ? new Set(determineQualifiedTeams(computeGroupStandings(teams)).thirdPlace)
+    : undefined;
+
   // Qualification zone per team (confirmed top two, live top two, third, out).
-  const zones = groupZones(groupTeams);
+  const zones = groupZones(groupTeams, qualifiedThirds);
 
   const groupMatches = matches
     .filter((m) => m.group === selectedGroup)

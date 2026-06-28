@@ -120,4 +120,26 @@ describe('groupZones', () => {
     expect(zones.get('C')).toBe('THIRD');
     expect(zones.get('D')).toBe('NONE');
   });
+
+  it('promotes a third-placed team to QUALIFIED when it is a best-third qualifier', () => {
+    const teams = [
+      makeTeam('A', { played: 3, points: 9, goalDifference: 6, goalsFor: 8 }),
+      makeTeam('B', { played: 3, points: 6, goalDifference: 2, goalsFor: 5 }),
+      makeTeam('C', { played: 3, points: 3, goalDifference: -2, goalsFor: 3 }),
+      makeTeam('D', { played: 3, points: 0, goalDifference: -6, goalsFor: 1 }),
+    ];
+    const zones = groupZones(teams, new Set(['C']));
+    expect(zones.get('C')).toBe('QUALIFIED');
+  });
+
+  it('leaves a third-placed team as THIRD when it is not among the qualified thirds', () => {
+    const teams = [
+      makeTeam('A', { played: 3, points: 9, goalDifference: 6, goalsFor: 8 }),
+      makeTeam('B', { played: 3, points: 6, goalDifference: 2, goalsFor: 5 }),
+      makeTeam('C', { played: 3, points: 3, goalDifference: -2, goalsFor: 3 }),
+      makeTeam('D', { played: 3, points: 0, goalDifference: -6, goalsFor: 1 }),
+    ];
+    const zones = groupZones(teams, new Set(['Z']));
+    expect(zones.get('C')).toBe('THIRD');
+  });
 });
