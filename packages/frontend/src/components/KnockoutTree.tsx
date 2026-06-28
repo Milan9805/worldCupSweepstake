@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Match } from '@sweepstake/shared';
 import Avatar from '@/components/Avatar';
@@ -27,6 +28,34 @@ const ROUND_SIZES: Record<string, number> = {
   FINAL: 1,
 };
 
+// useLayoutEffect warns when run during SSR; fall back to useEffect on the
+// server so the measured connectors paint without a flash on the client.
+const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
+
+const CORNER_RADIUS = 6;
+const r1 = (n: number) => Math.round(n * 10) / 10;
+
+// A rounded right-angle "elbow" from a parent card's right edge (x1,y1) to a
+// child card's left edge (x2,y2): horizontal stub out, vertical run at the
+// mid-x between the columns, horizontal stub in, with rounded bends. Degrades to
+// a straight line when the two cards are level.
+function elbowPath(x1: number, y1: number, x2: number, y2: number): string {
+  const midX = (x1 + x2) / 2;
+  if (Math.abs(y2 - y1) < 0.5) {
+    return `M ${r1(x1)} ${r1(y1)} L ${r1(x2)} ${r1(y2)}`;
+  }
+  const dir = y2 > y1 ? 1 : -1;
+  const r = Math.min(CORNER_RADIUS, Math.abs(midX - x1), Math.abs(x2 - midX), Math.abs(y2 - y1) / 2);
+  return [
+    `M ${r1(x1)} ${r1(y1)}`,
+    `L ${r1(midX - r)} ${r1(y1)}`,
+    `Q ${r1(midX)} ${r1(y1)} ${r1(midX)} ${r1(y1 + dir * r)}`,
+    `L ${r1(midX)} ${r1(y2 - dir * r)}`,
+    `Q ${r1(midX)} ${r1(y2)} ${r1(midX + r)} ${r1(y2)}`,
+    `L ${r1(x2)} ${r1(y2)}`,
+  ].join(' ');
+}
+
 interface KnockoutTreeProps {
   matches: Match[];
   teamOwners?: Record<string, TeamOwner>;
@@ -50,24 +79,101 @@ export default function KnockoutTree({ matches, teamOwners, teamFlags }: Knockou
       .sort((a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime()),
   }));
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  const [connectors, setConnectors] = useState<string[]>([]);
+
+  // Draw bracket connectors by measuring real card positions, so the lines stay
+  // correct however flexbox lays the cards out, whatever a round's match count,
+  // and at any width. Each card (cell n in round r) links to its successor
+  // (cell ⌊n/2⌋ in round r+1) — when that successor exists, keeping partially
+  // scheduled rounds and the successor-less final from drawing dangling lines.
+  useIsomorphicLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const compute = () => {
+      const origin = container.getBoundingClientRect();
+      setSize({ w: origin.width, h: origin.height });
+
+      const byRound = new Map<number, Map<number, DOMRect>>();
+      for (const el of container.querySelectorAll<HTMLElement>('[data-round-index]')) {
+        const round = Number(el.dataset.roundIndex);
+        const cell = Number(el.dataset.cellIndex);
+        if (!byRound.has(round)) byRound.set(round, new Map());
+        byRound.get(round)!.set(cell, el.getBoundingClientRect());
+      }
+
+      const paths: string[] = [];
+      for (const [round, cells] of byRound) {
+        const next = byRound.get(round + 1);
+        if (!next) continue;
+        for (const [cell, rect] of cells) {
+          const target = next.get(Math.floor(cell / 2));
+          if (!target) continue;
+          paths.push(
+            elbowPath(
+              rect.right - origin.left,
+              rect.top - origin.top + rect.height / 2,
+              target.left - origin.left,
+              target.top - origin.top + target.height / 2,
+            ),
+          );
+        }
+      }
+      setConnectors(paths);
+    };
+
+    compute();
+    // Recompute when card sizes shift (flags/fonts loading, content reflow).
+    const observer = new ResizeObserver(compute);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [matches]);
+
   return (
     <div className="overflow-x-auto">
-      <div className="flex gap-4 min-w-max p-1">
+      <div ref={containerRef} className="relative flex gap-4 min-w-max p-1">
+        <svg
+          className="absolute inset-0 pointer-events-none z-0"
+          width={size.w}
+          height={size.h}
+          aria-hidden="true"
+        >
+          {connectors.map((d, i) => (
+            <path
+              key={i}
+              d={d}
+              fill="none"
+              stroke="white"
+              strokeOpacity={0.2}
+              strokeWidth={1.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          ))}
+        </svg>
         {rounds.map((r, roundIndex) => (
-          <div key={r.round} className="flex flex-col gap-4" data-testid={`round-column-${r.round}`}>
+          <div
+            key={r.round}
+            className="relative z-10 flex flex-col gap-4"
+            data-testid={`round-column-${r.round}`}
+          >
             <h3 className="text-sm font-bold text-gold text-center mb-1">{r.label}</h3>
-            {/* Progressive top padding nudges each round's cards toward the
-                vertical centre of the previous round — the classic bracket look. */}
-            <div
-              className="flex flex-col justify-around flex-1 gap-3"
-              style={{ paddingTop: `${roundIndex * 24}px` }}
-            >
+            <div className="flex flex-col justify-around flex-1 gap-3">
               {r.matches.length > 0
-                ? r.matches.map((m) => (
-                    <TreeMatch key={m.matchId} match={m} teamOwners={teamOwners} teamFlags={teamFlags} />
+                ? r.matches.map((m, i) => (
+                    <TreeMatch
+                      key={m.matchId}
+                      match={m}
+                      teamOwners={teamOwners}
+                      teamFlags={teamFlags}
+                      roundIndex={roundIndex}
+                      cellIndex={i}
+                    />
                   ))
                 : Array.from({ length: ROUND_SIZES[r.round] }).map((_, i) => (
-                    <TreePlaceholder key={i} />
+                    <TreePlaceholder key={i} roundIndex={roundIndex} cellIndex={i} />
                   ))}
             </div>
           </div>
@@ -81,10 +187,14 @@ function TreeMatch({
   match,
   teamOwners,
   teamFlags,
+  roundIndex,
+  cellIndex,
 }: {
   match: Match;
   teamOwners?: Record<string, TeamOwner>;
   teamFlags?: Record<string, string>;
+  roundIndex: number;
+  cellIndex: number;
 }) {
   const finished = match.status === 'FINISHED';
   const live = match.status === 'LIVE';
@@ -92,7 +202,11 @@ function TreeMatch({
   const awayWon = finished && (match.awayScore ?? 0) > (match.homeScore ?? 0);
 
   return (
-    <div className="bg-white/5 border border-white/10 rounded-lg p-2 w-56 text-xs">
+    <div
+      data-round-index={roundIndex}
+      data-cell-index={cellIndex}
+      className="bg-white/5 border border-white/10 rounded-lg p-2 w-56 text-xs"
+    >
       <div className="flex items-center justify-between gap-1 mb-1">
         <span className="text-[10px] text-white/60 whitespace-nowrap">
           {formatMatchDate(match.datetime).replace(',', '')} · {formatMatchTime(match.datetime)}
@@ -156,9 +270,13 @@ function TeamRow({
   );
 }
 
-function TreePlaceholder() {
+function TreePlaceholder({ roundIndex, cellIndex }: { roundIndex: number; cellIndex: number }) {
   return (
-    <div className="bg-white/[0.02] border border-dashed border-white/10 rounded-lg p-2 w-56 text-xs">
+    <div
+      data-round-index={roundIndex}
+      data-cell-index={cellIndex}
+      className="bg-white/[0.02] border border-dashed border-white/10 rounded-lg p-2 w-56 text-xs"
+    >
       <div className="flex items-center gap-1 rounded p-1 text-white/30">TBD</div>
       <div className="flex items-center gap-1 rounded p-1 text-white/30">TBD</div>
     </div>
