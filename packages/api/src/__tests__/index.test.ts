@@ -5,8 +5,6 @@ import { APIGatewayProxyEventV2 } from 'aws-lambda';
 jest.mock('../handlers/getGroup', () => ({ handler: jest.fn() }));
 jest.mock('../handlers/getMatches', () => ({ handler: jest.fn() }));
 jest.mock('../handlers/getTeams', () => ({ handler: jest.fn() }));
-jest.mock('../handlers/getTree', () => ({ handler: jest.fn() }));
-jest.mock('../handlers/getBracket', () => ({ handler: jest.fn() }));
 jest.mock('../handlers/getFeed', () => ({ handler: jest.fn() }));
 jest.mock('../handlers/refresh', () => ({ handler: jest.fn() }));
 jest.mock('../handlers/adminLogin', () => ({ handler: jest.fn() }));
@@ -18,8 +16,6 @@ import { handler as dispatcher } from '../index';
 import { handler as getGroupHandler } from '../handlers/getGroup';
 import { handler as getMatchesHandler } from '../handlers/getMatches';
 import { handler as getTeamsHandler } from '../handlers/getTeams';
-import { handler as getTreeHandler } from '../handlers/getTree';
-import { handler as getBracketHandler } from '../handlers/getBracket';
 import { handler as getFeedHandler } from '../handlers/getFeed';
 import { handler as refreshHandler } from '../handlers/refresh';
 import { handler as adminLoginHandler } from '../handlers/adminLogin';
@@ -53,8 +49,8 @@ const OK_RESPONSE = { statusCode: 200, body: 'ok' };
 beforeEach(() => {
   jest.clearAllMocks();
   for (const h of [
-    getGroupHandler, getMatchesHandler, getTeamsHandler, getTreeHandler,
-    getBracketHandler, getFeedHandler, refreshHandler, adminLoginHandler,
+    getGroupHandler, getMatchesHandler, getTeamsHandler,
+    getFeedHandler, refreshHandler, adminLoginHandler,
     adminMembersHandler, adminAssignHandler, adminUploadAvatarHandler,
   ]) {
     (h as MockedHandler).mockResolvedValue(OK_RESPONSE);
@@ -83,8 +79,6 @@ describe('Lambda dispatcher', () => {
       ['GET', '/api/group/lads-on-tour', getGroupHandler as MockedHandler],
       ['GET', '/api/matches', getMatchesHandler as MockedHandler],
       ['GET', '/api/teams', getTeamsHandler as MockedHandler],
-      ['GET', '/api/tree', getTreeHandler as MockedHandler],
-      ['GET', '/api/bracket', getBracketHandler as MockedHandler],
       ['GET', '/api/feed', getFeedHandler as MockedHandler],
       ['POST', '/api/refresh', refreshHandler as MockedHandler],
       ['POST', '/api/admin/login', adminLoginHandler as MockedHandler],

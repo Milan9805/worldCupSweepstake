@@ -74,16 +74,6 @@ describe('api lib', () => {
     });
   });
 
-  describe('getTree', () => {
-    it('fetches tree', async () => {
-      const tree = [{ round: 'FINAL', position: 1 }];
-      mockSuccessResponse(tree);
-
-      const result = await api.getTree();
-      expect(result).toEqual(tree);
-    });
-  });
-
   describe('getFeed', () => {
     it('fetches feed events', async () => {
       const events = [{ eventId: 'm1#GOAL#1-0', type: 'GOAL', ts: '2026-06-05T12:00:00Z', payload: {} }];

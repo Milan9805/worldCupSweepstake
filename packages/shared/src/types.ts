@@ -118,18 +118,6 @@ export interface FeedEvent {
   payload: Record<string, unknown>; // display data (teams, scoreline, outcome, stage…)
 }
 
-// ===== Tournament Tree =====
-export interface TreeSlot {
-  round: string; // "ROUND_OF_32", "ROUND_OF_16", "QUARTER_FINAL", "SEMI_FINAL", "FINAL"
-  position: number;
-  team1: string | null; // teamCode
-  team2: string | null; // teamCode
-  score1: number | null;
-  score2: number | null;
-  winner: string | null; // teamCode
-  datetime: string | null;
-}
-
 // ===== Config =====
 export interface AppConfig {
   configKey: string;

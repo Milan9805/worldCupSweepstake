@@ -6,8 +6,6 @@ import {
 import { handler as getGroupHandler } from './handlers/getGroup';
 import { handler as getMatchesHandler } from './handlers/getMatches';
 import { handler as getTeamsHandler } from './handlers/getTeams';
-import { handler as getTreeHandler } from './handlers/getTree';
-import { handler as getBracketHandler } from './handlers/getBracket';
 import { handler as getFeedHandler } from './handlers/getFeed';
 import { handler as refreshHandler } from './handlers/refresh';
 import { handler as adminLoginHandler } from './handlers/adminLogin';
@@ -80,12 +78,6 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
   }
   if (method === 'GET' && path === '/api/teams') {
     return getTeamsHandler(toV1Event(event));
-  }
-  if (method === 'GET' && path === '/api/tree') {
-    return getTreeHandler(toV1Event(event));
-  }
-  if (method === 'GET' && path === '/api/bracket') {
-    return getBracketHandler(toV1Event(event));
   }
   if (method === 'GET' && path === '/api/feed') {
     return getFeedHandler(toV1Event(event));

@@ -122,7 +122,7 @@ describe('MatchList', () => {
     expect(screen.getByText('(Bob)')).toBeInTheDocument();
   });
 
-  it('renders broadcast channel pills when channels are present', () => {
+  it('renders broadcast channel pills when channels are present (hiding STV)', () => {
     const matches = [
       makeMatch({
         channels: [
@@ -134,8 +134,9 @@ describe('MatchList', () => {
     ];
     render(<MatchList matches={matches} />);
     expect(screen.getByText('ITV1')).toBeInTheDocument();
-    expect(screen.getByText('STV')).toBeInTheDocument();
     expect(screen.getByText('ITVX')).toBeInTheDocument();
+    // STV is a Scotland-only feed and is hidden everywhere.
+    expect(screen.queryByText('STV')).not.toBeInTheDocument();
   });
 
   it('applies each channel’s scraped brand colours', () => {
@@ -265,6 +266,46 @@ describe('MatchList', () => {
         el.getAttribute('data-testid') === 'today-divider' ? 'divider' : 'card',
       );
       expect(order).toEqual(['card', 'divider', 'card', 'card']);
+    });
+  });
+
+  describe('live-feed link', () => {
+    it('links a live match to the live feed when liveFeedHref is set', () => {
+      const matches = [makeMatch({ status: 'LIVE', homeScore: 1, awayScore: 0 })];
+      render(<MatchList matches={matches} liveFeedHref="/feed" />);
+      const link = screen.getByRole('link', { name: /watch this live match/i });
+      expect(link).toHaveAttribute('href', '/feed');
+      expect(link).toHaveTextContent('Watch live');
+      expect(screen.getByText('LIVE')).toBeInTheDocument();
+    });
+
+    it('does not link a live match when liveFeedHref is unset', () => {
+      const matches = [makeMatch({ status: 'LIVE', homeScore: 1, awayScore: 0 })];
+      render(<MatchList matches={matches} />);
+      expect(
+        screen.queryByRole('link', { name: /watch this live match/i }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText('LIVE')).toBeInTheDocument();
+    });
+
+    it('shows no watch-live link for a scheduled match even with liveFeedHref', () => {
+      render(<MatchList matches={[makeMatch({ status: 'SCHEDULED' })]} liveFeedHref="/feed" />);
+      expect(screen.queryByText(/watch live/i)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('plain stage label', () => {
+    it('renders the stage as plain text (not a link) when stagePlain is set', () => {
+      render(
+        <MatchList matches={[makeMatch({ stage: 'ROUND_OF_32', group: null })]} showStage stagePlain />,
+      );
+      expect(screen.getByText('Round of 32')).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Round of 32' })).not.toBeInTheDocument();
+    });
+
+    it('renders the stage as a link by default when showStage is set', () => {
+      render(<MatchList matches={[makeMatch({ stage: 'ROUND_OF_32', group: null })]} showStage />);
+      expect(screen.getByRole('link', { name: 'Round of 32' })).toBeInTheDocument();
     });
   });
 });

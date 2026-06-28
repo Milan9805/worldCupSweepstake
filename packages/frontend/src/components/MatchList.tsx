@@ -1,12 +1,14 @@
 'use client';
 
 import { Fragment } from 'react';
+import Link from 'next/link';
 import { Match } from '@sweepstake/shared';
-import { formatMatchDate, formatMatchTime } from '@/lib/format';
+import { formatMatchDate, formatMatchTime, formatStage } from '@/lib/format';
 import StageLink from '@/components/StageLink';
 import { isMatchMine } from '@/lib/fixtures';
 import LiveBadge from '@/components/LiveBadge';
 import MatchScoreline from '@/components/MatchScoreline';
+import ChannelPills from '@/components/ChannelPills';
 
 interface MatchListProps {
   matches: Match[];
@@ -24,11 +26,15 @@ interface MatchListProps {
   // todayDividerIndex). null/undefined renders no divider — only the all-fixtures
   // list passes it; the stage-scoped lists don't.
   todayDividerIndex?: number | null;
+  // When set, a LIVE match's status badge links to this page (the live feed) so
+  // you can jump straight to watching it. Opt-in — the fixtures page uses its own
+  // live banner instead, so it leaves this unset.
+  liveFeedHref?: string;
+  // Render the stage label (when showStage is on) as plain text instead of a
+  // StageLink. The knockout list links back to the page you're already on, so a
+  // link there is pointless; the all-fixtures list keeps the link.
+  stagePlain?: boolean;
 }
-
-// Fallbacks for when the source omits a channel's colours.
-const DEFAULT_CHANNEL_BG = '#374151';
-const DEFAULT_CHANNEL_FG = '#ffffff';
 
 export default function MatchList({
   matches,
@@ -37,11 +43,29 @@ export default function MatchList({
   showStage,
   claimedPerson,
   todayDividerIndex,
+  liveFeedHref,
+  stagePlain,
 }: MatchListProps) {
   const statusBadge = (match: Match) => {
     switch (match.status) {
-      case 'LIVE':
-        return <LiveBadge minute={match.minute} layout="stacked" />;
+      case 'LIVE': {
+        const badge = <LiveBadge minute={match.minute} layout="stacked" />;
+        if (!liveFeedHref) return badge;
+        // Link straight to the live feed; the small caption makes the badge read
+        // as tappable rather than decorative.
+        return (
+          <Link
+            href={liveFeedHref}
+            aria-label="Watch this live match in the feed"
+            className="group flex flex-col items-end gap-0.5"
+          >
+            {badge}
+            <span className="text-[10px] leading-tight text-red-300 group-hover:text-red-200">
+              Watch live →
+            </span>
+          </Link>
+        );
+      }
       case 'FINISHED':
         return (
           <span className="bg-gray-600 text-white text-xs px-2 py-0.5 rounded">
@@ -82,7 +106,13 @@ export default function MatchList({
               <div className="whitespace-nowrap">{formatMatchDate(match.datetime).replace(',', '')}</div>
               <div>{formatMatchTime(match.datetime)}</div>
               {showStage && (
-                <StageLink match={match} className="block mt-0.5 text-[10px] leading-tight text-white/50 hover:text-white/70" />
+                stagePlain ? (
+                  <span className="block mt-0.5 text-[10px] leading-tight text-white/50">
+                    {formatStage(match)}
+                  </span>
+                ) : (
+                  <StageLink match={match} className="block mt-0.5 text-[10px] leading-tight text-white/50 hover:text-white/70" />
+                )
               )}
             </div>
 
@@ -91,22 +121,7 @@ export default function MatchList({
             <div className="flex-1 min-w-0 flex flex-col gap-2">
               <MatchScoreline match={match} teamOwners={teamOwners} teamFlags={teamFlags} />
 
-              {match.channels && match.channels.length > 0 && (
-                <div className="flex flex-wrap gap-1 justify-center">
-                  {match.channels.map((channel) => (
-                    <span
-                      key={channel.name}
-                      style={{
-                        backgroundColor: channel.bg || DEFAULT_CHANNEL_BG,
-                        color: channel.fg || DEFAULT_CHANNEL_FG,
-                      }}
-                      className="text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-sm"
-                    >
-                      {channel.name}
-                    </span>
-                  ))}
-                </div>
-              )}
+              <ChannelPills channels={match.channels} />
             </div>
 
             {/* Mirrors the date column's width on sm+ to keep the matchup centred in

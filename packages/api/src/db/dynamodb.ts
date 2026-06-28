@@ -2,7 +2,6 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
   BatchWriteCommand,
-  DeleteCommand,
   GetCommand,
   PutCommand,
   QueryCommand,
@@ -165,34 +164,6 @@ async function writeMatchChunk(chunk: Record<string, unknown>[]): Promise<void> 
   const dropped = requestItems[tables.matches]?.length ?? 0;
   if (dropped > 0) {
     console.error(`batchPutMatches: ${dropped} match write(s) still unprocessed after ${BATCH_WRITE_RETRIES} attempts`);
-  }
-}
-
-export async function getTree() {
-  const result = await getDocClient().send(
-    new ScanCommand({ TableName: tables.tree })
-  );
-  return result.Items || [];
-}
-
-export async function putTreeSlot(slot: Record<string, unknown>) {
-  await getDocClient().send(
-    new PutCommand({
-      TableName: tables.tree,
-      Item: slot,
-    })
-  );
-}
-
-export async function clearTree() {
-  const items = await getTree();
-  for (const item of items) {
-    await getDocClient().send(
-      new DeleteCommand({
-        TableName: tables.tree,
-        Key: { round: item.round, position: item.position },
-      })
-    );
   }
 }
 

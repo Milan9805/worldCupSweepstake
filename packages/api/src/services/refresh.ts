@@ -14,7 +14,7 @@ import {
   FeedEvent,
   hasActiveMatchWindow,
 } from '@sweepstake/shared';
-import { generateTreeIfReady, processKnockoutResults, markCompletedGroupEliminations } from './generateTree';
+import { finalizeGroupStageIfReady, markKnockoutLosersEliminated, markCompletedGroupEliminations } from './knockout';
 import { detectEvents } from './detectEvents';
 import {
   deriveCardCounts,
@@ -133,9 +133,11 @@ export async function refreshData(preloadedMatches?: Match[]): Promise<RefreshRe
     console.warn('Football-on-TV channel scrape failed:', tvError);
   }
 
-  // Recompute bracket and progress knockouts off the latest in-memory state.
-  await generateTreeIfReady();
-  await processKnockoutResults(matches);
+  // Finalise the group stage once it's complete, and eliminate knockout losers
+  // off the latest in-memory state. The knockout matchups come from the real
+  // scraped fixtures, so there's no bracket to recompute here.
+  await finalizeGroupStageIfReady();
+  await markKnockoutLosersEliminated(matches);
 
   // Refresh team stats: the league table derived from our stored (BBC-driven)
   // match results, plus card counts from the per-player match actions. Deriving

@@ -1,10 +1,7 @@
 import {
   computeGroupStandings,
   determineQualifiedTeams,
-  generateBracketSlots,
-  getNextSlot,
   isGroupStageComplete,
-  KNOCKOUT_BRACKET,
 } from '../bracket';
 import { Team } from '../types';
 
@@ -52,43 +49,6 @@ function makeFullTournament(): Team[] {
 }
 
 // ===== Tests =====
-
-describe('KNOCKOUT_BRACKET', () => {
-  it('has exactly 16 matches for the Round of 32', () => {
-    expect(KNOCKOUT_BRACKET).toHaveLength(16);
-  });
-
-  it('uses all 12 group winners exactly once', () => {
-    const winners = KNOCKOUT_BRACKET
-      .flatMap((m) => [m.team1, m.team2])
-      .filter((s) => s.startsWith('1'));
-    const uniqueWinners = [...new Set(winners)];
-    expect(uniqueWinners).toHaveLength(12);
-    expect(uniqueWinners.sort()).toEqual(
-      ['1A', '1B', '1C', '1D', '1E', '1F', '1G', '1H', '1I', '1J', '1K', '1L']
-    );
-  });
-
-  it('uses all 8 3rd-place slots exactly once', () => {
-    const thirds = KNOCKOUT_BRACKET
-      .flatMap((m) => [m.team1, m.team2])
-      .filter((s) => s.startsWith('3rd_'));
-    const uniqueThirds = [...new Set(thirds)];
-    expect(uniqueThirds).toHaveLength(8);
-  });
-
-  it('uses 12 runners-up total', () => {
-    const runners = KNOCKOUT_BRACKET
-      .flatMap((m) => [m.team1, m.team2])
-      .filter((s) => s.startsWith('2'));
-    expect(runners).toHaveLength(12);
-  });
-
-  it('maps to exactly 32 team sources total', () => {
-    const all = KNOCKOUT_BRACKET.flatMap((m) => [m.team1, m.team2]);
-    expect(all).toHaveLength(32);
-  });
-});
 
 describe('computeGroupStandings', () => {
   it('returns teams sorted by points descending', () => {
@@ -212,137 +172,6 @@ describe('determineQualifiedTeams', () => {
     expect(qualified.groupWinners.size).toBe(0);
     expect(qualified.groupRunners.size).toBe(0);
     expect(qualified.thirdPlace).toHaveLength(0);
-  });
-});
-
-describe('generateBracketSlots', () => {
-  it('generates exactly 31 tree slots', () => {
-    const teams = makeFullTournament();
-    const { slots } = generateBracketSlots(teams);
-    // 16 R32 + 8 R16 + 4 QF + 2 SF + 1 Final = 31
-    expect(slots).toHaveLength(31);
-  });
-
-  it('generates 16 Round of 32 slots with teams populated', () => {
-    const teams = makeFullTournament();
-    const { slots } = generateBracketSlots(teams);
-
-    const r32 = slots.filter((s) => s.round === 'ROUND_OF_32');
-    expect(r32).toHaveLength(16);
-    r32.forEach((slot) => {
-      expect(slot.team1).not.toBeNull();
-      expect(slot.team2).not.toBeNull();
-    });
-  });
-
-  it('leaves R32 slots null when no teams are qualified', () => {
-    // Empty input → no groupWinners / groupRunners / thirdPlace, so every
-    // bracket source resolves to null rather than throwing.
-    const { slots } = generateBracketSlots([]);
-    const r32 = slots.filter((s) => s.round === 'ROUND_OF_32');
-    expect(r32).toHaveLength(16);
-    r32.forEach((slot) => {
-      expect(slot.team1).toBeNull();
-      expect(slot.team2).toBeNull();
-    });
-  });
-
-  it('generates empty slots for rounds after R32', () => {
-    const teams = makeFullTournament();
-    const { slots } = generateBracketSlots(teams);
-
-    const laterRounds = slots.filter((s) => s.round !== 'ROUND_OF_32');
-    expect(laterRounds).toHaveLength(15);
-    laterRounds.forEach((slot) => {
-      expect(slot.team1).toBeNull();
-      expect(slot.team2).toBeNull();
-      expect(slot.winner).toBeNull();
-    });
-  });
-
-  it('all R32 slots have null scores and no winner', () => {
-    const teams = makeFullTournament();
-    const { slots } = generateBracketSlots(teams);
-
-    const r32 = slots.filter((s) => s.round === 'ROUND_OF_32');
-    r32.forEach((slot) => {
-      expect(slot.score1).toBeNull();
-      expect(slot.score2).toBeNull();
-      expect(slot.winner).toBeNull();
-    });
-  });
-
-  it('positions are sequential within each round', () => {
-    const teams = makeFullTournament();
-    const { slots } = generateBracketSlots(teams);
-
-    const r32 = slots.filter((s) => s.round === 'ROUND_OF_32');
-    const positions = r32.map((s) => s.position).sort((a, b) => a - b);
-    expect(positions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
-  });
-
-  it('returns eliminated teams list', () => {
-    const teams = makeFullTournament();
-    const { eliminated } = generateBracketSlots(teams);
-
-    expect(eliminated.length).toBe(16); // 12 last-place + 4 worst 3rd-place
-  });
-
-  it('no team appears twice in R32', () => {
-    const teams = makeFullTournament();
-    const { slots } = generateBracketSlots(teams);
-
-    const r32 = slots.filter((s) => s.round === 'ROUND_OF_32');
-    const allTeams = r32.flatMap((s) => [s.team1, s.team2]).filter(Boolean);
-    const unique = new Set(allTeams);
-    expect(unique.size).toBe(32);
-  });
-});
-
-describe('getNextSlot', () => {
-  it('R32 position 1 → R16 position 1, team1', () => {
-    const next = getNextSlot('ROUND_OF_32', 1);
-    expect(next).toEqual({ round: 'ROUND_OF_16', position: 1, isTeam1: true });
-  });
-
-  it('R32 position 2 → R16 position 1, team2', () => {
-    const next = getNextSlot('ROUND_OF_32', 2);
-    expect(next).toEqual({ round: 'ROUND_OF_16', position: 1, isTeam1: false });
-  });
-
-  it('R32 position 3 → R16 position 2, team1', () => {
-    const next = getNextSlot('ROUND_OF_32', 3);
-    expect(next).toEqual({ round: 'ROUND_OF_16', position: 2, isTeam1: true });
-  });
-
-  it('R32 position 4 → R16 position 2, team2', () => {
-    const next = getNextSlot('ROUND_OF_32', 4);
-    expect(next).toEqual({ round: 'ROUND_OF_16', position: 2, isTeam1: false });
-  });
-
-  it('R16 position 1 → QF position 1, team1', () => {
-    const next = getNextSlot('ROUND_OF_16', 1);
-    expect(next).toEqual({ round: 'QUARTER_FINAL', position: 1, isTeam1: true });
-  });
-
-  it('SF position 1 → Final position 1, team1', () => {
-    const next = getNextSlot('SEMI_FINAL', 1);
-    expect(next).toEqual({ round: 'FINAL', position: 1, isTeam1: true });
-  });
-
-  it('SF position 2 → Final position 1, team2', () => {
-    const next = getNextSlot('SEMI_FINAL', 2);
-    expect(next).toEqual({ round: 'FINAL', position: 1, isTeam1: false });
-  });
-
-  it('Final has no next slot', () => {
-    const next = getNextSlot('FINAL', 1);
-    expect(next).toBeNull();
-  });
-
-  it('unknown round returns null', () => {
-    const next = getNextSlot('UNKNOWN_ROUND', 1);
-    expect(next).toBeNull();
   });
 });
 

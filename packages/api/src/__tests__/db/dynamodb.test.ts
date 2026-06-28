@@ -7,8 +7,6 @@ import {
   putMatch,
   batchPutMatches,
   batchPutTeams,
-  getTree,
-  putTreeSlot,
   getConfig,
   putConfig,
   putEvent,
@@ -243,31 +241,6 @@ describe('dynamodb module', () => {
       expect(mockSend).toHaveBeenCalledTimes(3);
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('still unprocessed'));
       errorSpy.mockRestore();
-    });
-  });
-
-  describe('getTree', () => {
-    it('returns items from scan', async () => {
-      const tree = [{ round: 'FINAL', position: 1 }];
-      mockSend.mockResolvedValue({ Items: tree });
-
-      const result = await getTree();
-      expect(result).toEqual(tree);
-    });
-
-    it('returns empty array when no items', async () => {
-      mockSend.mockResolvedValue({ Items: undefined });
-
-      const result = await getTree();
-      expect(result).toEqual([]);
-    });
-  });
-
-  describe('putTreeSlot', () => {
-    it('sends put command', async () => {
-      mockSend.mockResolvedValue({});
-      await putTreeSlot({ round: 'FINAL', position: 1 });
-      expect(mockSend).toHaveBeenCalled();
     });
   });
 

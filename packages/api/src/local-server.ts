@@ -11,7 +11,6 @@ import cors from 'cors';
 import { handler as getGroupHandler } from './handlers/getGroup';
 import { handler as getMatchesHandler } from './handlers/getMatches';
 import { handler as getTeamsHandler } from './handlers/getTeams';
-import { handler as getTreeHandler } from './handlers/getTree';
 import { handler as getFeedHandler } from './handlers/getFeed';
 import { handler as refreshHandler } from './handlers/refresh';
 import { handler as adminLoginHandler } from './handlers/adminLogin';
@@ -59,12 +58,6 @@ app.get('/api/matches', async (req, res) => {
 app.get('/api/teams', async (req, res) => {
   const event = toLambdaEvent(req);
   const result = await getTeamsHandler(event);
-  res.status(result.statusCode).json(JSON.parse(result.body));
-});
-
-app.get('/api/tree', async (req, res) => {
-  const event = toLambdaEvent(req);
-  const result = await getTreeHandler(event);
   res.status(result.statusCode).json(JSON.parse(result.body));
 });
 

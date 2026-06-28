@@ -1,41 +1,54 @@
 import '@testing-library/jest-dom';
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import TreePage from '../../app/tree/page';
-import * as api from '../../lib/api';
 
-jest.mock('../../lib/api');
 jest.mock('../../components/NavBar', () => {
   return function MockNavBar() {
     return <div data-testid="navbar">NavBar</div>;
   };
 });
-jest.mock('../../components/TreeView', () => {
-  return function MockTreeView({ slots }: { slots: unknown[] }) {
-    return <div data-testid="tree-view">{slots.length} slots</div>;
+jest.mock('../../components/KnockoutTree', () => {
+  return function MockKnockoutTree({ matches }: { matches: unknown[] }) {
+    return <div data-testid="knockout-tree">{matches.length} knockout matches</div>;
   };
 });
 jest.mock('../../components/MatchList', () => {
-  return function MockMatchList({ matches }: { matches: unknown[] }) {
-    return <div data-testid="match-list">{matches.length} matches</div>;
+  return function MockMatchList({ matches, showStage, stagePlain, liveFeedHref }: {
+    matches: unknown[];
+    showStage?: boolean;
+    stagePlain?: boolean;
+    liveFeedHref?: string;
+  }) {
+    return (
+      <div
+        data-testid="match-list"
+        data-show-stage={String(!!showStage)}
+        data-stage-plain={String(!!stagePlain)}
+        data-live-feed-href={liveFeedHref ?? ''}
+      >
+        {matches.length} matches
+      </div>
+    );
   };
 });
 
-// Mutable context state — the page reads group/matches from the shared
-// GroupContext (which owns the score polling); only the slots come from the api.
+// The page reads group/teams/matches/loading from the shared GroupContext.
 let mockGroup: Record<string, unknown> | null = null;
+let mockTeams: unknown[] = [];
 let mockMatches: unknown[] = [];
+let mockLoading = false;
 
 jest.mock('../../hooks/GroupContext', () => ({
   useGroup: () => ({
     group: mockGroup,
+    teams: mockTeams,
     matches: mockMatches,
+    loading: mockLoading,
   }),
 }));
 
-const mockedApi = api as jest.Mocked<typeof api>;
 const mockPush = jest.fn();
-
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush }),
 }));
@@ -47,74 +60,66 @@ const mockLocalStorage = {
 };
 Object.defineProperty(window, 'localStorage', { value: mockLocalStorage });
 
+const makeMatch = (over: Record<string, unknown> = {}) => ({
+  matchId: '1',
+  homeTeam: 'ENG',
+  awayTeam: 'BRA',
+  homeScore: null,
+  awayScore: null,
+  status: 'SCHEDULED',
+  stage: 'ROUND_OF_32',
+  group: null,
+  datetime: '2026-07-05T18:00:00Z',
+  venue: 'Stadium',
+  ...over,
+});
+
 describe('TreePage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockLocalStorage.getItem.mockReturnValue('test-group');
     mockGroup = { groupKey: 'test', groupName: 'Test', members: [{ name: 'Alice', imageUrl: null, teams: ['ENG'] }] };
+    mockTeams = [{ teamCode: 'ENG', flag: '🏴' }, { teamCode: 'BRA', flag: '🇧🇷' }];
     mockMatches = [];
-    mockedApi.getTree.mockResolvedValue([]);
+    mockLoading = false;
   });
 
-  it('shows loading state initially', () => {
-    mockedApi.getTree.mockReturnValue(new Promise(() => {}));
+  it('shows the loading state on a cold start', () => {
+    mockLoading = true;
+    mockTeams = [];
     render(<TreePage />);
     expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
-  it('redirects to home if no group key', async () => {
+  it('redirects to home if no group key', () => {
     mockLocalStorage.getItem.mockReturnValue(null);
     render(<TreePage />);
     expect(mockPush).toHaveBeenCalledWith('/');
-    // Flush the in-flight getTree so its state updates land inside the test.
-    await waitFor(() => {
-      expect(screen.queryByRole('status')).not.toBeInTheDocument();
-    });
   });
 
-  it('renders tree view after loading', async () => {
-    const slots = [{ round: 'FINAL', position: 1, team1: 'ENG', team2: 'BRA', score1: null, score2: null, winner: null, datetime: null }];
-    mockedApi.getTree.mockResolvedValue(slots);
-    mockMatches = [{ matchId: '1', homeTeam: 'ENG', awayTeam: 'BRA', homeScore: null, awayScore: null, status: 'SCHEDULED', stage: 'FINAL', group: null, datetime: '2026-07-15T20:00:00Z', venue: 'Stadium' }];
-
+  it('shows the empty state when there are no knockout matches', () => {
+    mockMatches = [makeMatch({ stage: 'GROUP_STAGE', group: 'A' })];
     render(<TreePage />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId('tree-view')).toBeInTheDocument();
-    });
+    expect(screen.getByText('Tree not yet available')).toBeInTheDocument();
+    expect(screen.queryByTestId('knockout-tree')).not.toBeInTheDocument();
   });
 
-  it('renders knockout fixtures from the shared matches', async () => {
+  it('renders the match-driven tree from the shared knockout matches', () => {
     mockMatches = [
-      { matchId: '1', homeTeam: 'ENG', awayTeam: 'BRA', homeScore: null, awayScore: null, status: 'SCHEDULED', stage: 'QUARTER_FINAL', group: null, datetime: '2026-07-05T18:00:00Z', venue: 'Stadium' },
-      { matchId: '2', homeTeam: 'GER', awayTeam: 'FRA', homeScore: null, awayScore: null, status: 'SCHEDULED', stage: 'GROUP_STAGE', group: 'A', datetime: '2026-06-14T18:00:00Z', venue: 'Stadium' },
+      makeMatch({ matchId: '1', stage: 'ROUND_OF_32' }),
+      makeMatch({ matchId: '2', stage: 'GROUP_STAGE', group: 'A' }),
     ];
-
     render(<TreePage />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId('match-list')).toBeInTheDocument();
-      expect(screen.getByText('1 matches')).toBeInTheDocument();
-    });
+    // Only the one knockout match is passed to the tree (group match excluded).
+    expect(screen.getByTestId('knockout-tree')).toHaveTextContent('1 knockout matches');
   });
 
-  it('refetches the bracket when the shared matches update (poll tick or refresh)', async () => {
-    const liveMatch = { matchId: '1', homeTeam: 'ENG', awayTeam: 'BRA', homeScore: 0, awayScore: 0, status: 'LIVE', stage: 'FINAL', group: null, datetime: '2026-07-15T20:00:00Z', venue: 'Stadium' };
-    mockMatches = [liveMatch];
-
-    const { rerender } = render(<TreePage />);
-    await waitFor(() => {
-      expect(screen.queryByRole('status')).not.toBeInTheDocument();
-    });
-    expect(mockedApi.getTree).toHaveBeenCalledTimes(1);
-
-    // The context replaces the matches array on every poll tick / refresh —
-    // the page must refetch the server-recomputed slots in response.
-    mockMatches = [{ ...liveMatch, homeScore: 1 }];
-    rerender(<TreePage />);
-
-    await waitFor(() => {
-      expect(mockedApi.getTree).toHaveBeenCalledTimes(2);
-    });
+  it('renders the knockout fixtures list with flags, plain stage label and a live-feed link', () => {
+    mockMatches = [makeMatch({ matchId: '1', stage: 'ROUND_OF_32' })];
+    render(<TreePage />);
+    const list = screen.getByTestId('match-list');
+    expect(list).toHaveAttribute('data-show-stage', 'true');
+    expect(list).toHaveAttribute('data-stage-plain', 'true');
+    expect(list).toHaveAttribute('data-live-feed-href', '/feed');
   });
 });

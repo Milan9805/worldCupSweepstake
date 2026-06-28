@@ -32,10 +32,6 @@ export async function getTeams() {
   return fetchApi('/api/teams');
 }
 
-export async function getTree() {
-  return fetchApi('/api/tree');
-}
-
 export async function getFeed() {
   return fetchApi<FeedEvent[]>('/api/feed');
 }
