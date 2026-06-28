@@ -68,7 +68,8 @@ interface KnockoutTreeProps {
  * never diverge from the fixtures. Each card is compact — flag, code, owner and
  * score per side — with the kick-off time, a winner highlight, and a live badge
  * that links to the feed. Rounds not yet scheduled show "to be confirmed"
- * placeholders so the path to the final is always visible.
+ * placeholders so the path to the final is always visible. Measured SVG elbow
+ * lines connect each tie to the next-round tie it feeds, drawing the bracket.
  */
 export default function KnockoutTree({ matches, teamOwners, teamFlags }: KnockoutTreeProps) {
   const rounds = ROUND_ORDER.map((round) => ({
