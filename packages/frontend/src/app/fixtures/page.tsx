@@ -9,6 +9,7 @@ import FilterTabs from '@/components/FilterTabs';
 import TeamFilterDropdown from '@/components/TeamFilterDropdown';
 import MatchList from '@/components/MatchList';
 import LiveBadge from '@/components/LiveBadge';
+import { fillKnockoutOpponents } from '@sweepstake/shared';
 import { useGroup } from '@/hooks/GroupContext';
 import { useNow } from '@/hooks/useNow';
 import { buildOwnersByTeam } from '@/lib/owners';
@@ -66,24 +67,30 @@ export default function FixturesPage() {
   // identity is stable for the `visible` memo below (which depends on it).
   const ownersByTeam = useMemo(() => buildOwnersByTeam(group?.members ?? []), [group?.members]);
 
+  // Resolve knockout fixtures whose opponent the feed hasn't filled in yet from
+  // the calculated bracket, so the list shows "CAN vs BRA" once BRA advances
+  // (and the team filter / owner brackets see the real matchup) rather than a
+  // half-empty "CAN vs" row.
+  const resolvedMatches = useMemo(() => fillKnockoutOpponents(matches), [matches]);
+
   // Only offer the teams that actually appear in a fixture, alphabetised, so the
   // dropdown can't filter to a team with nothing to show.
   const dropdownTeams = useMemo(() => {
     const playing = new Set<string>();
-    matches.forEach((m) => {
+    resolvedMatches.forEach((m) => {
       playing.add(m.homeTeam);
       playing.add(m.awayTeam);
     });
     return teams
       .filter((t) => playing.has(t.teamCode))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [teams, matches]);
+  }, [teams, resolvedMatches]);
 
   // The display list: sorted oldest -> newest, with the active view and (in the
   // "All" view only) the team search applied.
   const visible = useMemo(
-    () => filterFixtures(matches, { filter, teamCode: selectedTeamCode }, ownersByTeam, claimedPerson),
-    [matches, filter, selectedTeamCode, ownersByTeam, claimedPerson],
+    () => filterFixtures(resolvedMatches, { filter, teamCode: selectedTeamCode }, ownersByTeam, claimedPerson),
+    [resolvedMatches, filter, selectedTeamCode, ownersByTeam, claimedPerson],
   );
 
   // The "Today" marker orients the user in both the All and My fixtures views —
@@ -101,9 +108,9 @@ export default function FixturesPage() {
   const liveMatch = useMemo(
     () =>
       filter === 'mine'
-        ? (matches.find((m) => m.status === 'LIVE' && isMatchMine(m, ownersByTeam, claimedPerson)) ?? null)
+        ? (resolvedMatches.find((m) => m.status === 'LIVE' && isMatchMine(m, ownersByTeam, claimedPerson)) ?? null)
         : null,
-    [filter, matches, ownersByTeam, claimedPerson],
+    [filter, resolvedMatches, ownersByTeam, claimedPerson],
   );
 
   // Measure the MatchBanner's bottom edge so the sticky filter bar pins flush

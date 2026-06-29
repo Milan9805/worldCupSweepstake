@@ -283,3 +283,34 @@ export function buildKnockoutTree(matches: Match[]): TreeRound[] {
 
   return rounds;
 }
+
+/**
+ * Fill in the unresolved side of knockout fixtures from the calculated bracket,
+ * so a fixture the feed only half-knows ("CAN vs <tbd>") shows its derived
+ * opponent ("CAN vs BRA") the moment the feeding tie is decided — the same
+ * advancement the tree shows, applied to a flat fixtures list. Group-stage and
+ * Round-of-32 fixtures, already-complete fixtures, and ties whose opponent isn't
+ * decided yet all pass through unchanged.
+ */
+export function fillKnockoutOpponents(matches: Match[]): Match[] {
+  const slotsByStage = new Map<string, BracketSlot[]>();
+  for (const round of buildKnockoutTree(matches)) {
+    slotsByStage.set(round.round, round.slots);
+  }
+
+  return matches.map((m) => {
+    if (m.stage === 'GROUP_STAGE' || m.stage === 'ROUND_OF_32') return m;
+    if (m.homeTeam && m.awayTeam) return m; // already a full matchup
+
+    const known = m.homeTeam || m.awayTeam;
+    if (!known) return m; // nothing to anchor the lookup on
+
+    const slot = slotsByStage.get(m.stage)?.find(
+      (s) => s.homeTeam === known || s.awayTeam === known,
+    );
+    const opponent = slot ? (slot.homeTeam === known ? slot.awayTeam : slot.homeTeam) : null;
+    if (!opponent) return m; // feeding tie not decided yet
+
+    return m.homeTeam ? { ...m, awayTeam: opponent } : { ...m, homeTeam: opponent };
+  });
+}

@@ -6,6 +6,7 @@ import NavBar from '@/components/NavBar';
 import Spinner from '@/components/Spinner';
 import KnockoutTree from '@/components/KnockoutTree';
 import MatchList from '@/components/MatchList';
+import { fillKnockoutOpponents } from '@sweepstake/shared';
 import { useGroup } from '@/hooks/GroupContext';
 import { buildOwnersByTeam } from '@/lib/owners';
 
@@ -33,7 +34,10 @@ export default function TreePage() {
   // The knockout matchups + the chronological fixtures list are both driven by
   // the real matches, so they can never disagree.
   const knockoutMatches = matches.filter((m) => m.stage !== 'GROUP_STAGE');
-  const knockoutByDate = [...knockoutMatches].sort(
+  // Fill each fixture's unresolved side from the calculated bracket so the list
+  // reads "CAN vs BRA" the moment BRA advances, matching the tree above instead
+  // of waiting on the feed to resolve the opponent.
+  const knockoutByDate = [...fillKnockoutOpponents(knockoutMatches)].sort(
     (a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime(),
   );
 
