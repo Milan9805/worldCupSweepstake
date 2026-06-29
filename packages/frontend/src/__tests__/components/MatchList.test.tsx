@@ -270,27 +270,29 @@ describe('MatchList', () => {
   });
 
   describe('live-feed link', () => {
-    it('links a live match to the live feed when liveFeedHref is set', () => {
+    it('links the live badge to the live feed when liveFeedHref is set', () => {
       const matches = [makeMatch({ status: 'LIVE', homeScore: 1, awayScore: 0 })];
       render(<MatchList matches={matches} liveFeedHref="/feed" />);
       const link = screen.getByRole('link', { name: /watch this live match/i });
       expect(link).toHaveAttribute('href', '/feed');
-      expect(link).toHaveTextContent('Watch live');
-      expect(screen.getByText('LIVE')).toBeInTheDocument();
+      // The badge is the link itself — no redundant "Watch live" caption.
+      expect(link).toContainElement(screen.getByText('LIVE'));
+      expect(link).not.toHaveTextContent(/watch live/i);
     });
 
-    it('does not link a live match when liveFeedHref is unset', () => {
+    it('links the live pill to /feed by default, with no liveFeedHref', () => {
       const matches = [makeMatch({ status: 'LIVE', homeScore: 1, awayScore: 0 })];
       render(<MatchList matches={matches} />);
+      const link = screen.getByRole('link', { name: /watch this live match/i });
+      expect(link).toHaveAttribute('href', '/feed');
+      expect(link).toContainElement(screen.getByText('LIVE'));
+    });
+
+    it('shows no live-feed link for a scheduled match even with liveFeedHref', () => {
+      render(<MatchList matches={[makeMatch({ status: 'SCHEDULED' })]} liveFeedHref="/feed" />);
       expect(
         screen.queryByRole('link', { name: /watch this live match/i }),
       ).not.toBeInTheDocument();
-      expect(screen.getByText('LIVE')).toBeInTheDocument();
-    });
-
-    it('shows no watch-live link for a scheduled match even with liveFeedHref', () => {
-      render(<MatchList matches={[makeMatch({ status: 'SCHEDULED' })]} liveFeedHref="/feed" />);
-      expect(screen.queryByText(/watch live/i)).not.toBeInTheDocument();
     });
   });
 

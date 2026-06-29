@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { Match, Team } from '@sweepstake/shared';
 import { getTournamentMatchInfo } from '@/lib/teamMatches';
 import { isGroupStageComplete } from '@/lib/fixtures';
@@ -110,10 +111,19 @@ function LiveMatchRow({
   teamLabel: (code: string) => string;
   ownersByTeam: Record<string, Owner>;
 }) {
+  // The pill links to the live feed everywhere except on the feed page itself,
+  // where it would just point back at the current page.
+  const onFeed = usePathname() === '/feed';
   return (
     <div className="flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-2 text-sm sm:text-base leading-tight">
       <div className="flex items-center gap-1.5 shrink-0">
-        <LiveBadge minute={match.minute} layout="inline" />
+        {onFeed ? (
+          <LiveBadge minute={match.minute} layout="inline" />
+        ) : (
+          <Link href="/feed" aria-label="Watch this live match in the feed" className="shrink-0">
+            <LiveBadge minute={match.minute} layout="inline" />
+          </Link>
+        )}
         <span className="text-red-200 uppercase tracking-wide text-[11px] font-semibold shrink-0">
           {'('}
           <StageLink match={match} className="text-red-200 hover:text-red-100" />

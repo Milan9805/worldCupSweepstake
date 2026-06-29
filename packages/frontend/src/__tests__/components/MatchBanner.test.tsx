@@ -283,6 +283,12 @@ describe('MatchBanner', () => {
       expect(screen.getByRole('link', { name: 'Group E' })).toBeInTheDocument();
     });
 
+    it('links the live pill to the live feed', () => {
+      render(<MatchBanner matches={[liveA]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
+      const link = screen.getByRole('link', { name: /watch this live match/i });
+      expect(link).toHaveAttribute('href', '/feed');
+    });
+
     it('the live stage label is a link to /groups for a group match', () => {
       render(<MatchBanner matches={[liveA]} teamsByCode={teamsByCode} ownersByTeam={owners} />);
       const link = screen.getByRole('link', { name: 'Group E' });

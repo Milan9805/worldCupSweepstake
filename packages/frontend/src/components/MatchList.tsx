@@ -26,9 +26,9 @@ interface MatchListProps {
   // todayDividerIndex). null/undefined renders no divider — only the all-fixtures
   // list passes it; the stage-scoped lists don't.
   todayDividerIndex?: number | null;
-  // When set, a LIVE match's status badge links to this page (the live feed) so
-  // you can jump straight to watching it. Opt-in — the fixtures page uses its own
-  // live banner instead, so it leaves this unset.
+  // Where a LIVE match's pill links — defaults to the live feed ('/feed'). The
+  // pill is always a tappable shortcut to the feed; pass this only to override
+  // the destination.
   liveFeedHref?: string;
   // Render the stage label (when showStage is on) as plain text instead of a
   // StageLink. The knockout list links back to the page you're already on, so a
@@ -48,24 +48,13 @@ export default function MatchList({
 }: MatchListProps) {
   const statusBadge = (match: Match) => {
     switch (match.status) {
-      case 'LIVE': {
-        const badge = <LiveBadge minute={match.minute} layout="stacked" />;
-        if (!liveFeedHref) return badge;
-        // Link straight to the live feed; the small caption makes the badge read
-        // as tappable rather than decorative.
+      case 'LIVE':
+        // The pill itself links straight to the live feed — no caption needed.
         return (
-          <Link
-            href={liveFeedHref}
-            aria-label="Watch this live match in the feed"
-            className="group flex flex-col items-end gap-0.5"
-          >
-            {badge}
-            <span className="text-[10px] leading-tight text-red-300 group-hover:text-red-200">
-              Watch live →
-            </span>
+          <Link href={liveFeedHref ?? '/feed'} aria-label="Watch this live match in the feed" className="shrink-0">
+            <LiveBadge minute={match.minute} layout="stacked" />
           </Link>
         );
-      }
       case 'FINISHED':
         return (
           <span className="bg-gray-600 text-white text-xs px-2 py-0.5 rounded">

@@ -139,6 +139,20 @@ describe('TeamCard', () => {
       expect(screen.getByText('ENG 1 - 0 BRA')).toBeInTheDocument();
     });
 
+    it('links the live pill to the live feed', () => {
+      const live = makeMatch({ status: 'LIVE', homeScore: 1, awayScore: 0 });
+      render(
+        <TeamCard
+          team={makeTeam()}
+          matchInfo={{ live, next: null, previous: null }}
+          teamsByCode={teamsByCode}
+        />
+      );
+      const link = screen.getByRole('link', { name: /watch this live match/i });
+      expect(link).toHaveAttribute('href', '/feed');
+      expect(link).toContainElement(screen.getByText('LIVE'));
+    });
+
     it('shows the live match minute (shared LiveBadge, same as the fixtures list)', () => {
       const live = makeMatch({ status: 'LIVE', homeScore: 1, awayScore: 0, minute: "45'+1" });
       render(

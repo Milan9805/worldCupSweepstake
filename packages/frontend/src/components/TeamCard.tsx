@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { Match, Team, ProgressTone, TeamProgress } from '@sweepstake/shared';
 import { TeamMatchInfo } from '@/lib/teamMatches';
 import { formatMatchDate, formatMatchTime } from '@/lib/format';
@@ -138,7 +139,9 @@ function MatchInfoFooter({
     <div className="mt-3 pt-3 border-t border-white/10 space-y-1.5 text-xs">
       {live ? (
         <div className="flex items-center justify-center gap-2 flex-wrap">
-          <LiveBadge minute={live.minute} layout="inline" />
+          <Link href="/feed" aria-label="Watch this live match in the feed" className="shrink-0">
+            <LiveBadge minute={live.minute} layout="inline" />
+          </Link>
           <span className="text-white font-medium">
             {live.homeTeam} {live.homeScore} - {live.awayScore} {live.awayTeam}
           </span>
