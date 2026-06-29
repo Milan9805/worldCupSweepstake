@@ -14,11 +14,12 @@ jest.mock('../../components/KnockoutTree', () => {
   };
 });
 jest.mock('../../components/MatchList', () => {
-  return function MockMatchList({ matches, showStage, stagePlain, liveFeedHref }: {
+  return function MockMatchList({ matches, showStage, stagePlain, liveFeedHref, claimedPerson }: {
     matches: unknown[];
     showStage?: boolean;
     stagePlain?: boolean;
     liveFeedHref?: string;
+    claimedPerson?: string | null;
   }) {
     return (
       <div
@@ -26,6 +27,7 @@ jest.mock('../../components/MatchList', () => {
         data-show-stage={String(!!showStage)}
         data-stage-plain={String(!!stagePlain)}
         data-live-feed-href={liveFeedHref ?? ''}
+        data-claimed-person={claimedPerson ?? ''}
       >
         {matches.length} matches
       </div>
@@ -38,12 +40,14 @@ let mockGroup: Record<string, unknown> | null = null;
 let mockTeams: unknown[] = [];
 let mockMatches: unknown[] = [];
 let mockLoading = false;
+let mockClaimedPerson: string | null = null;
 
 jest.mock('../../hooks/GroupContext', () => ({
   useGroup: () => ({
     group: mockGroup,
     teams: mockTeams,
     matches: mockMatches,
+    claimedPerson: mockClaimedPerson,
     loading: mockLoading,
   }),
 }));
@@ -82,6 +86,7 @@ describe('TreePage', () => {
     mockTeams = [{ teamCode: 'ENG', flag: '🏴' }, { teamCode: 'BRA', flag: '🇧🇷' }];
     mockMatches = [];
     mockLoading = false;
+    mockClaimedPerson = 'Alice';
   });
 
   it('shows the loading state on a cold start', () => {
@@ -121,5 +126,7 @@ describe('TreePage', () => {
     expect(list).toHaveAttribute('data-show-stage', 'true');
     expect(list).toHaveAttribute('data-stage-plain', 'true');
     expect(list).toHaveAttribute('data-live-feed-href', '/feed');
+    // Passes the claimed member through so the list highlights their ties blue.
+    expect(list).toHaveAttribute('data-claimed-person', 'Alice');
   });
 });

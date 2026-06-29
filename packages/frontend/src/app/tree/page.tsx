@@ -77,6 +77,7 @@ export default function TreePage() {
               matches={knockoutByDate}
               teamOwners={teamOwners}
               teamFlags={teamFlags}
+              claimedPerson={claimedPerson}
               showStage
               stagePlain
               liveFeedHref="/feed"
