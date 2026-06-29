@@ -80,8 +80,68 @@ describe('KnockoutTree', () => {
     render(<KnockoutTree matches={matches} />);
     expect(screen.getByText('FT')).toBeInTheDocument();
     // The winning side's row carries the green highlight; the loser's does not.
-    expect(screen.getByText('ENG').closest('div')).toHaveClass('bg-green-900/40');
-    expect(screen.getByText('BRA').closest('div')).not.toHaveClass('bg-green-900/40');
+    // Scoped to the Round of 32 column because the winner (ENG) now also appears
+    // in the calculated Round of 16.
+    const r32 = screen.getByTestId('round-column-ROUND_OF_32');
+    expect(within(r32).getByText('ENG').closest('div')).toHaveClass('bg-green-900/40');
+    expect(within(r32).getByText('BRA').closest('div')).not.toHaveClass('bg-green-900/40');
+  });
+
+  it('advances the winners of finished ties into the next round', () => {
+    // RSA-CAN (CAN win) is the earlier R32 tie, BRA-JPN (BRA win) the later one,
+    // so both winners feed the same Round of 16 tie.
+    const matches = [
+      makeMatch({ matchId: 'm1', homeTeam: 'RSA', awayTeam: 'CAN', homeScore: 0, awayScore: 1, status: 'FINISHED', datetime: '2026-06-28T19:00:00Z' }),
+      makeMatch({ matchId: 'm2', homeTeam: 'BRA', awayTeam: 'JPN', homeScore: 2, awayScore: 1, status: 'FINISHED', datetime: '2026-06-29T18:00:00Z' }),
+    ];
+    render(<KnockoutTree matches={matches} />);
+    const r16 = screen.getByTestId('round-column-ROUND_OF_16');
+    expect(within(r16).getByText('CAN')).toBeInTheDocument();
+    expect(within(r16).getByText('BRA')).toBeInTheDocument();
+    // The eliminated sides do not advance.
+    expect(within(r16).queryByText('JPN')).not.toBeInTheDocument();
+    expect(within(r16).queryByText('RSA')).not.toBeInTheDocument();
+  });
+
+  describe('claimed-member highlight', () => {
+    const owners = {
+      ENG: { name: 'Alice', imageUrl: null },
+      BRA: { name: 'Bob', imageUrl: null },
+      GER: { name: 'Bob', imageUrl: null },
+      FRA: { name: 'Bob', imageUrl: null },
+    };
+
+    it('flags a tie the claimed member owns a team in', () => {
+      const matches = [
+        makeMatch({ matchId: 'a', homeTeam: 'ENG', awayTeam: 'BRA', datetime: '2026-06-28T20:00:00Z' }),
+        makeMatch({ matchId: 'b', homeTeam: 'GER', awayTeam: 'FRA', datetime: '2026-06-29T20:00:00Z' }),
+      ];
+      render(<KnockoutTree matches={matches} teamOwners={owners} claimedPerson="Alice" />);
+      const r32 = screen.getByTestId('round-column-ROUND_OF_32');
+      // Alice owns ENG → the ENG/BRA tie is flagged; the GER/FRA tie (all Bob) is not.
+      expect(within(r32).getByText('ENG').closest('[data-involves-claimed]'))
+        .toHaveAttribute('data-involves-claimed', 'true');
+      expect(within(r32).getByText('GER').closest('[data-involves-claimed]'))
+        .toHaveAttribute('data-involves-claimed', 'false');
+    });
+
+    it('flags nothing when no member is claimed', () => {
+      const matches = [makeMatch({ homeTeam: 'ENG', awayTeam: 'BRA' })];
+      render(<KnockoutTree matches={matches} teamOwners={owners} />);
+      expect(screen.getByText('ENG').closest('[data-involves-claimed]'))
+        .toHaveAttribute('data-involves-claimed', 'false');
+    });
+
+    it('flags a calculated next-round tie the claimed member advances into', () => {
+      // Alice owns ENG; ENG wins its R32 tie, so the derived R16 tie is flagged too.
+      const matches = [
+        makeMatch({ matchId: 'a', homeTeam: 'ENG', awayTeam: 'BRA', homeScore: 2, awayScore: 0, status: 'FINISHED', datetime: '2026-06-28T20:00:00Z' }),
+      ];
+      render(<KnockoutTree matches={matches} teamOwners={owners} claimedPerson="Alice" />);
+      const r16 = screen.getByTestId('round-column-ROUND_OF_16');
+      expect(within(r16).getByText('ENG').closest('[data-involves-claimed]'))
+        .toHaveAttribute('data-involves-claimed', 'true');
+    });
   });
 
   it('shows no score for a scheduled tie', () => {

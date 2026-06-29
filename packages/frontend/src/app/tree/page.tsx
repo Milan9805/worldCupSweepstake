@@ -10,7 +10,7 @@ import { useGroup } from '@/hooks/GroupContext';
 import { buildOwnersByTeam } from '@/lib/owners';
 
 export default function TreePage() {
-  const { group, teams, matches, loading } = useGroup();
+  const { group, teams, matches, claimedPerson, loading } = useGroup();
   const router = useRouter();
 
   // Group/teams/matches come from the shared group context (kept fresh while
@@ -54,7 +54,12 @@ export default function TreePage() {
         <h1 className="text-2xl font-bold mb-6">Tournament Tree</h1>
 
         {knockoutMatches.length > 0 ? (
-          <KnockoutTree matches={knockoutMatches} teamOwners={teamOwners} teamFlags={teamFlags} />
+          <KnockoutTree
+            matches={knockoutMatches}
+            teamOwners={teamOwners}
+            teamFlags={teamFlags}
+            claimedPerson={claimedPerson}
+          />
         ) : (
           <div className="text-center text-green-200 py-12">
             <p className="text-lg mb-2">Tree not yet available</p>

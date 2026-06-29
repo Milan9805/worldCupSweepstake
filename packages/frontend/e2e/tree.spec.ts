@@ -49,6 +49,17 @@ const MATCHES = [
   match('m2', 'BRA', 'JPN', 'ROUND_OF_32', 'SCHEDULED', '2099-06-29T18:00:00Z'),
 ];
 
+// Both R32 ties finished — CAN and BRA win, so the tree calculates the next
+// round from the winners (they feed the same Round-of-16 tie).
+const FINISHED_MATCHES = [
+  match('m1', 'RSA', 'CAN', 'ROUND_OF_32', 'FINISHED', '2099-06-28T19:00:00Z', {
+    homeScore: 0, awayScore: 1,
+  }),
+  match('m2', 'BRA', 'JPN', 'ROUND_OF_32', 'FINISHED', '2099-06-29T18:00:00Z', {
+    homeScore: 2, awayScore: 1,
+  }),
+];
+
 async function seedRegistry(page: Page) {
   await page.addInitScript(() => {
     localStorage.setItem(
@@ -59,16 +70,16 @@ async function seedRegistry(page: Page) {
   });
 }
 
-async function mockApi(page: Page) {
+async function mockApi(page: Page, matches: unknown[] = MATCHES) {
   await page.route('**/api/**', async (route) => {
     const url = route.request().url();
     const send = (data: unknown) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data }) });
     if (url.includes('/api/teams')) return send(TEAMS);
-    if (url.includes('/api/matches')) return send(MATCHES);
+    if (url.includes('/api/matches')) return send(matches);
     if (url.includes('/api/group/')) return send(GROUP);
     if (url.includes('/api/feed')) return send([]);
-    if (url.includes('/api/refresh')) return send({ matches: MATCHES, teams: TEAMS });
+    if (url.includes('/api/refresh')) return send({ matches, teams: TEAMS });
     return send(null);
   });
 }
@@ -110,6 +121,61 @@ test.describe('Tournament Tree — match-driven', () => {
     // The kept fixtures list below still carries the full detail.
     await expect(page.getByRole('heading', { name: 'Knockout Fixtures' })).toBeVisible();
     await expect(page.getByText('ITV1').first()).toBeVisible();
+  });
+
+  test('calculates the next round from the winners of finished ties', async ({ page }) => {
+    await seedRegistry(page);
+    await mockApi(page, FINISHED_MATCHES);
+    await page.goto('/tree');
+
+    // CAN beat RSA and BRA beat JPN, so both winners advance into the Round of 16
+    // even though no R16 fixture has been scraped yet.
+    const r16 = page.getByTestId('round-column-ROUND_OF_16');
+    await expect(r16.getByText('CAN')).toBeVisible();
+    await expect(r16.getByText('BRA')).toBeVisible();
+    // The eliminated sides do not appear in the next round.
+    await expect(r16.getByText('JPN')).toHaveCount(0);
+    await expect(r16.getByText('RSA')).toHaveCount(0);
+  });
+
+  test('pins the round headings beneath the nav and banner while the tree scrolls', async ({ page }) => {
+    // A short viewport guarantees the page scrolls past the headings' natural spot.
+    await page.setViewportSize({ width: 1024, height: 600 });
+    await seedRegistry(page);
+    await mockApi(page);
+    await page.goto('/tree');
+
+    const headings = page.getByTestId('tree-round-headings');
+    await expect(headings).toBeVisible();
+
+    await page.evaluate(() => window.scrollTo(0, 450));
+
+    // Still on screen (not scrolled away) and pinned flush below the sticky
+    // NavBar + MatchBanner, so it's always clear which round is which.
+    await expect(headings).toBeVisible();
+    const bannerBox = await page.getByTestId('match-banner').boundingBox();
+    const headBox = await headings.boundingBox();
+    expect(bannerBox).not.toBeNull();
+    expect(headBox).not.toBeNull();
+    expect(headBox!.y).toBeGreaterThanOrEqual(bannerBox!.y + bannerBox!.height - 2);
+    expect(headBox!.y).toBeLessThan(bannerBox!.y + bannerBox!.height + 14);
+  });
+
+  test("highlights the claimed member's ties in blue", async ({ page }) => {
+    await seedRegistry(page); // claimed person = Elliot, who owns RSA + CAN
+    await mockApi(page);
+    await page.goto('/tree');
+
+    const r32 = page.getByTestId('round-column-ROUND_OF_32');
+    // Elliot owns RSA & CAN → that tie is flagged; BRA/JPN (Hugh/Lauren) is not.
+    await expect(r32.locator('[data-cell-index]', { hasText: 'RSA' })).toHaveAttribute(
+      'data-involves-claimed',
+      'true',
+    );
+    await expect(r32.locator('[data-cell-index]', { hasText: 'BRA' })).toHaveAttribute(
+      'data-involves-claimed',
+      'false',
+    );
   });
 
   test.describe('mobile layout', () => {
