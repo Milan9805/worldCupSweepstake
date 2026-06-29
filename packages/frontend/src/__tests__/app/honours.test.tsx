@@ -137,6 +137,16 @@ describe('HonoursPage', () => {
     expect(within(winner).getByText('Still in')).toBeInTheDocument();
   });
 
+  it('shows still-in/total remaining (not total) on the Deepest Run line', () => {
+    render(<HonoursPage />);
+    const card = cardFor('deepestRun');
+    const winner = within(card).getByTestId('prize-winner');
+    // Alice owns BRA (alive) + ENG (eliminated) → 1 of 2 still in. The old bug
+    // rendered "2 teams"; the line now mirrors the Leaderboard and drops points.
+    expect(within(winner).getByText('1/2 remaining')).toBeInTheDocument();
+    expect(within(winner).queryByText(/pts/)).not.toBeInTheDocument();
+  });
+
   it('shows loading state', () => {
     mockLoading = true;
     mockGroup = null;

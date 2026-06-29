@@ -169,6 +169,17 @@ describe('computeHonours', () => {
     expect(rows[2].breakdown.bestStageLabel).toBe('Group Stage');
   });
 
+  it('counts teamsAlive (still in) separately from teams (total assigned)', () => {
+    const rows = prize(computeHonours(teams, members), 'deepestRun').rows;
+    // Alice: BRA alive + ENG out → 1/2; Bob: GER alive + FRA out → 1/2;
+    // Cara: JPN out → 0/1. `teams` stays the full total for every other prize.
+    expect(rows.map((r) => [r.person, r.teamsAlive, r.teams])).toEqual([
+      ['Alice', 1, 2],
+      ['Bob', 1, 2],
+      ['Cara', 0, 1],
+    ]);
+  });
+
   describe('tiebreaks', () => {
     it('Most Goals: equal goalsFor breaks on fewer goalsAgainst, then name', () => {
       const t = [

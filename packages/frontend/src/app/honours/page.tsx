@@ -172,7 +172,9 @@ function headlineValue(prize: HonourPrize, row: HonourRow): string {
 // The secondary line under the winner, with the prize's unit where it helps.
 function formatValue(prize: HonourPrize, row: HonourRow): string {
   if (prize.id === 'deepestRun') {
-    return `${row.teams} team${row.teams === 1 ? '' : 's'} • ${row.breakdown.points} pts`;
+    // The stage is already the headline, so this line just gives "still in /
+    // total" context — mirroring the Leaderboard's "5/8 remaining".
+    return `${row.teamsAlive}/${row.teams} remaining`;
   }
   const unit = prize.unit ? ` ${prize.unit}` : '';
   return `${row.value}${unit} • ${row.teams} team${row.teams === 1 ? '' : 's'}`;

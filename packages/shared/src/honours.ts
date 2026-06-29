@@ -78,12 +78,14 @@ function teamStageKey(team: Team): keyof typeof STAGE_RANK {
  * One owner's row in a prize table. `value` is the prize's headline metric;
  * `breakdown` carries the secondary numbers the UI shows under it (and that the
  * documented tiebreaks use). `teams` is the count of the owner's teams that
- * contributed (0 when they own no loaded teams).
+ * contributed (0 when they own no loaded teams); `teamsAlive` is how many of
+ * those are still in the tournament (not eliminated).
  */
 export interface HonourRow {
   person: string;
   value: number;
   teams: number;
+  teamsAlive: number;
   breakdown: {
     goalsFor: number;
     goalsAgainst: number;
@@ -152,11 +154,13 @@ function aggregate(members: Person[], teams: Team[]): HonourRow[] {
     }
 
     const cards = yellowCards * YELLOW_CARD_WEIGHT + redCards * RED_CARD_WEIGHT;
+    const teamsAlive = owned.filter((t) => !t.eliminated).length;
 
     return {
       person: person.name,
       value: 0, // set per-prize below
       teams: owned.length,
+      teamsAlive,
       breakdown: {
         goalsFor,
         goalsAgainst,
