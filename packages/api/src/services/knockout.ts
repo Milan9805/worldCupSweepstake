@@ -110,7 +110,9 @@ interface KnockoutMatchInput {
  * A tie level on the pitch is resolved by the penalty shootout tally.
  */
 function knockoutLoser(m: KnockoutMatchInput): string | null {
-  if (m.stage === 'GROUP_STAGE' || m.status !== 'FINISHED') return null;
+  // The third-place playoff eliminates nobody new — both sides already went out
+  // in the semis — so skip it (and keep each team a loser of at most one tie).
+  if (m.stage === 'GROUP_STAGE' || m.stage === 'THIRD_PLACE' || m.status !== 'FINISHED') return null;
   if (m.homeScore == null || m.awayScore == null) return null;
   if (m.homeScore > m.awayScore) return m.awayTeam;
   if (m.awayScore > m.homeScore) return m.homeTeam;
@@ -122,28 +124,57 @@ function knockoutLoser(m: KnockoutMatchInput): string | null {
   return null;
 }
 
+// The display names of the knockout rounds. Used to tell a knockout elimination
+// (which this function owns and may revise) apart from a group-stage one (set by
+// the group logic and never touched here).
+const KNOCKOUT_ROUND_NAMES = new Set(Object.values(ROUND_NAMES));
+
 /**
- * Mark the loser of every decided knockout match as eliminated, derived
- * directly from the finished fixtures (no bracket needed). A tie level after
- * extra time is resolved by its penalty shootout; a level tie with no shootout
- * tally yet is left undecided rather than eliminating the wrong side.
- * Idempotent: only teams whose elimination flag actually changes are written.
+ * Reconcile every team's knockout elimination against the decided fixtures
+ * (no bracket needed). The losers of the finished ties ARE the complete set of
+ * knockout-stage eliminations, so this works both ways:
+ *  - a team that lost a decided tie is marked out at that round, and
+ *  - a team flagged out at a knockout round that is no longer the loser of any
+ *    decided tie is un-eliminated — it actually advanced.
+ * That self-heal matters because the shootout tally can land after a tie first
+ * shows as finished: a tie level on the pitch but momentarily finished with the
+ * eventual penalty winner behind would otherwise strand that winner as "Out"
+ * forever (the flag was previously write-once). A level tie with no shootout
+ * tally yet stays undecided rather than eliminating the wrong side. Group-stage
+ * exits are never touched — their round name isn't a knockout round.
+ * Idempotent: only teams whose elimination actually changes are written.
  */
 export async function markKnockoutLosersEliminated(matches: KnockoutMatchInput[]): Promise<void> {
-  const losers = matches
-    .map((m) => ({ loser: knockoutLoser(m), stage: m.stage }))
-    .filter((x): x is { loser: string; stage: string } => x.loser !== null);
-  if (losers.length === 0) return;
+  // Nothing to set or clear until a knockout tie has finished — skip the team
+  // scan during the group stage.
+  if (!matches.some((m) => m.stage !== 'GROUP_STAGE' && m.status === 'FINISHED')) return;
+
+  // The round each team lost at, keyed by team code. A team can only lose one
+  // tie (the third-place playoff is excluded), so there is no ambiguity here.
+  const lostRoundByCode = new Map<string, string>();
+  for (const m of matches) {
+    const loser = knockoutLoser(m);
+    if (loser) lostRoundByCode.set(loser, formatRoundName(m.stage));
+  }
 
   const teams = await getAllTeams() as unknown as Team[];
-  const byCode = new Map(teams.map((t) => [t.teamCode, t]));
   const changed: Team[] = [];
 
-  for (const { loser, stage } of losers) {
-    const team = byCode.get(loser);
-    if (team && !team.eliminated) {
-      team.eliminated = true;
-      team.eliminatedAt = formatRoundName(stage);
+  for (const team of teams) {
+    const lostRound = lostRoundByCode.get(team.teamCode);
+    if (lostRound) {
+      // Lost a decided tie — eliminate. Preserve an earlier round if already out
+      // so we never push a team's exit to a later round than it really happened.
+      if (!team.eliminated) {
+        team.eliminated = true;
+        team.eliminatedAt = lostRound;
+        changed.push(team);
+      }
+    } else if (team.eliminated && team.eliminatedAt && KNOCKOUT_ROUND_NAMES.has(team.eliminatedAt)) {
+      // Flagged out at a knockout round but not the loser of any decided tie —
+      // they advanced (e.g. the shootout result corrected a transient finish).
+      team.eliminated = false;
+      team.eliminatedAt = null;
       changed.push(team);
     }
   }

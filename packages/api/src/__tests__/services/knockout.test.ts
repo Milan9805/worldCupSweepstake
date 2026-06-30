@@ -249,4 +249,54 @@ describe('markKnockoutLosersEliminated', () => {
 
     expect(mockedDb.batchPutTeams).not.toHaveBeenCalled();
   });
+
+  it('un-eliminates the penalty winner that was wrongly flagged out (self-heal)', async () => {
+    // ENG won 4-3 on pens, so NGA is the only one out — but ENG was stranded as
+    // "Out" by a transient finish before the shootout result landed.
+    const eng = makeTeam('ENG', 'A', 9, 6, 8);
+    eng.eliminated = true;
+    eng.eliminatedAt = 'Round of 32';
+    const nga = makeTeam('NGA', 'B', 6, 3, 5);
+    mockedDb.getAllTeams.mockResolvedValue([eng, nga] as unknown as Record<string, unknown>[]);
+    mockedDb.batchPutTeams.mockResolvedValue(undefined);
+
+    await markKnockoutLosersEliminated([
+      knockoutMatch({ homeScore: 1, awayScore: 1, penaltyHome: 4, penaltyAway: 3 }),
+    ]);
+
+    const written = mockedDb.batchPutTeams.mock.calls[0][0] as unknown as Team[];
+    const byCode = new Map(written.map((t) => [t.teamCode, t]));
+    expect(byCode.get('ENG')).toMatchObject({ eliminated: false, eliminatedAt: null });
+    expect(byCode.get('NGA')).toMatchObject({ eliminated: true, eliminatedAt: 'Round of 32' });
+  });
+
+  it('does not clear a group-stage elimination during the knockouts', async () => {
+    // A team out in the group stage is not a knockout loser, but its exit must
+    // survive the reconcile (only knockout-round flags are revisable).
+    const eng = makeTeam('ENG', 'A', 9, 6, 8);
+    const nga = makeTeam('NGA', 'B', 6, 3, 5);
+    const grp = makeTeam('GRP', 'C', 0, -8, 1);
+    grp.eliminated = true;
+    grp.eliminatedAt = 'Group Stage';
+    mockedDb.getAllTeams.mockResolvedValue([eng, nga, grp] as unknown as Record<string, unknown>[]);
+    mockedDb.batchPutTeams.mockResolvedValue(undefined);
+
+    await markKnockoutLosersEliminated([knockoutMatch()]);
+
+    const written = mockedDb.batchPutTeams.mock.calls[0][0] as unknown as Team[];
+    expect(written.map((t) => t.teamCode)).toEqual(['NGA']);
+  });
+
+  it('keeps a real knockout loser eliminated (no spurious self-heal)', async () => {
+    const eng = makeTeam('ENG', 'A', 9, 6, 8);
+    const nga = makeTeam('NGA', 'B', 6, 3, 5);
+    nga.eliminated = true;
+    nga.eliminatedAt = 'Round of 32';
+    mockedDb.getAllTeams.mockResolvedValue([eng, nga] as unknown as Record<string, unknown>[]);
+
+    // The same decided tie that put NGA out is still in the feed — it stays out.
+    await markKnockoutLosersEliminated([knockoutMatch()]);
+
+    expect(mockedDb.batchPutTeams).not.toHaveBeenCalled();
+  });
 });

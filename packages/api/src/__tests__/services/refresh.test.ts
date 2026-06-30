@@ -119,6 +119,35 @@ describe('refreshData', () => {
       expect(mockedDb.batchPutMatches).not.toHaveBeenCalled();
     });
 
+    it('does not let a stale poll wipe a known penalty shootout tally', async () => {
+      mockedDb.getConfig.mockResolvedValue(undefined);
+      // A finished knockout whose shootout result we already have.
+      const stored = {
+        matchId: 'm-ger-par',
+        homeTeam: 'GER',
+        awayTeam: 'PAR',
+        homeScore: 1,
+        awayScore: 1,
+        penaltyHome: 3,
+        penaltyAway: 4,
+        status: 'FINISHED',
+        stage: 'ROUND_OF_32',
+        group: null,
+        datetime: '2026-06-29T20:00:00Z',
+        venue: 'Stadium',
+      };
+      // A later API poll reports the on-pitch result but omits the penalties.
+      const stalePoll = { ...stored, penaltyHome: null, penaltyAway: null };
+      mockedFootballData.fetchMatches.mockResolvedValue([stalePoll] as never);
+      mockedDb.getAllMatches.mockResolvedValue([stored]);
+      mockedDb.getAllTeams.mockResolvedValue([]);
+
+      await refreshData();
+
+      // Penalties are preserved, so nothing changed and the tally is never lost.
+      expect(mockedDb.batchPutMatches).not.toHaveBeenCalled();
+    });
+
     it('uses preloaded matches instead of re-scanning the table', async () => {
       mockedDb.getConfig.mockResolvedValue(undefined);
       mockedFootballData.fetchMatches.mockResolvedValue([]);

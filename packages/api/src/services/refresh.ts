@@ -320,6 +320,13 @@ function applyUpdate<U extends { matchId?: string }>(
 
   if (merged.homeScore == null && existing.homeScore != null) merged.homeScore = existing.homeScore;
   if (merged.awayScore == null && existing.awayScore != null) merged.awayScore = existing.awayScore;
+  // Same no-regression guard for the shootout tally: once a tie's penalty result
+  // is known it must never fall back to "no shootout". A stale football-data poll
+  // that omits penalties (or a BBC patch, which never carries them) would
+  // otherwise un-decide a finished knockout and the bracket would wrongly
+  // un-eliminate its loser.
+  if (merged.penaltyHome == null && existing.penaltyHome != null) merged.penaltyHome = existing.penaltyHome;
+  if (merged.penaltyAway == null && existing.penaltyAway != null) merged.penaltyAway = existing.penaltyAway;
   if (STATUS_RANK[merged.status] < STATUS_RANK[existing.status]) merged.status = existing.status;
 
   // Player actions (goals/cards) are cumulative within a match, so they never
