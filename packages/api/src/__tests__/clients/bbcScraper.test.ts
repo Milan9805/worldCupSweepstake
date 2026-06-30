@@ -566,6 +566,63 @@ describe('buildBbcPatches', () => {
     );
     expect(patches).toEqual([]);
   });
+
+  // A knockout tie can go to extra time / penalties, which BBC's scoreline can't
+  // resolve — football-data owns the final result, so BBC must not finalize it.
+  const liveKnockout: Match[] = [
+    {
+      matchId: 'm-ger-par',
+      homeTeam: 'GER',
+      awayTeam: 'PAR',
+      homeScore: 1,
+      awayScore: 1,
+      status: 'LIVE',
+      stage: 'ROUND_OF_32',
+      group: null,
+      datetime: '2026-06-29T20:00:00Z',
+      venue: 'TBC',
+    },
+  ];
+
+  it('clamps a knockout BBC reports as FINISHED back to LIVE (lets football-data finalize)', () => {
+    const patches = buildBbcPatches(
+      [
+        {
+          homeTeam: 'GER',
+          awayTeam: 'PAR',
+          homeScore: 1,
+          awayScore: 1,
+          status: 'FINISHED',
+          datetime: '2026-06-29T20:00:00Z',
+          minute: null,
+          actions: [],
+        },
+      ],
+      liveKnockout,
+    );
+    expect(patches).toHaveLength(1);
+    expect(patches[0].status).toBe('LIVE');
+  });
+
+  it('skips a knockout already finished by football-data (never clobbers its result)', () => {
+    const finishedKnockout: Match[] = [{ ...liveKnockout[0], status: 'FINISHED' }];
+    const patches = buildBbcPatches(
+      [
+        {
+          homeTeam: 'GER',
+          awayTeam: 'PAR',
+          homeScore: 4,
+          awayScore: 5,
+          status: 'FINISHED',
+          datetime: '2026-06-29T20:00:00Z',
+          minute: null,
+          actions: [],
+        },
+      ],
+      finishedKnockout,
+    );
+    expect(patches).toEqual([]);
+  });
 });
 
 describe('fetchBbcFixtures', () => {

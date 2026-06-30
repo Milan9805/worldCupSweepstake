@@ -370,11 +370,30 @@ export function buildBbcPatches(
     );
     if (!match) continue;
 
+    const isKnockout = match.stage !== 'GROUP_STAGE';
+
+    // Once a knockout is FINISHED it was football-data that finalized it (BBC
+    // never can — see below), and football-data is authoritative for the final
+    // result: it carries the on-pitch score + the shootout tally, neither of
+    // which BBC's scoreline cleanly distinguishes. So leave a finished knockout
+    // alone rather than letting a BBC poll clobber the correct result.
+    if (isKnockout && match.status === 'FINISHED') continue;
+
+    // BBC can flip a knockout tie to FINISHED at the end of normal time, before
+    // extra time / penalties — and applyUpdate's no-regression guard then LOCKS
+    // it there, so the later (correct) football-data result with the shootout
+    // never lands. Knockouts only truly finish once football-data confirms it
+    // (it models ET + pens), so never let BBC finalize one: hold it LIVE and let
+    // football-data own the FINISHED flip. Group-stage matches (no ET/pens) keep
+    // BBC's status as-is.
+    const status =
+      isKnockout && fixture.status === 'FINISHED' ? 'LIVE' : fixture.status;
+
     patches.push({
       matchId: match.matchId,
       homeScore: fixture.homeScore,
       awayScore: fixture.awayScore,
-      status: fixture.status,
+      status,
       minute: fixture.minute,
       actions: fixture.actions,
     });
