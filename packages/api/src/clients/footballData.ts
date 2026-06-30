@@ -45,6 +45,11 @@ function checkRateLimit(): void {
   requestTimestamps.push(now);
 }
 
+interface ScorePair {
+  home: number | null;
+  away: number | null;
+}
+
 interface FootballDataMatch {
   id: number;
   utcDate: string;
@@ -54,7 +59,17 @@ interface FootballDataMatch {
   homeTeam: { tla: string; name: string };
   awayTeam: { tla: string; name: string };
   score: {
-    fullTime: { home: number | null; away: number | null };
+    // For a knockout decided beyond 90 mins, `fullTime` FOLDS the shootout in
+    // (regulation + extra time + penalties), so we never read it directly for a
+    // shootout — we use regularTime+extraTime for the on-pitch score and
+    // penalties for the shootout tally. Only fullTime/halfTime exist on a
+    // REGULAR match; the rest are present only when duration is non-REGULAR.
+    winner?: string | null; // "HOME_TEAM" | "AWAY_TEAM" | "DRAW" | null
+    duration?: string; // "REGULAR" | "EXTRA_TIME" | "PENALTY_SHOOTOUT"
+    fullTime: ScorePair;
+    regularTime?: ScorePair;
+    extraTime?: ScorePair;
+    penalties?: ScorePair;
   };
   venue: string | null;
 }
@@ -100,18 +115,50 @@ export async function fetchMatches(): Promise<Partial<Match>[]> {
   const data = await fetchFromApi<{ matches: FootballDataMatch[] }>(`/competitions/${COMPETITION_ID}/matches`);
   const matches: FootballDataMatch[] = data.matches || [];
 
-  return matches.map((m) => ({
-    matchId: String(m.id),
-    homeTeam: normaliseTla(m.homeTeam.tla),
-    awayTeam: normaliseTla(m.awayTeam.tla),
-    homeScore: m.score.fullTime.home,
-    awayScore: m.score.fullTime.away,
-    status: mapStatus(m.status),
-    stage: mapStage(m.stage),
-    group: m.group ? m.group.replace('GROUP_', '') : null,
-    datetime: m.utcDate,
-    venue: m.venue || 'TBC',
-  }));
+  return matches.map((m) => {
+    const onPitch = onPitchScore(m.score);
+    const pens = m.score.penalties;
+    return {
+      matchId: String(m.id),
+      homeTeam: normaliseTla(m.homeTeam.tla),
+      awayTeam: normaliseTla(m.awayTeam.tla),
+      homeScore: onPitch.home,
+      awayScore: onPitch.away,
+      penaltyHome: pens?.home ?? null,
+      penaltyAway: pens?.away ?? null,
+      status: mapStatus(m.status),
+      stage: mapStage(m.stage),
+      group: m.group ? m.group.replace('GROUP_', '') : null,
+      datetime: m.utcDate,
+      venue: m.venue || 'TBC',
+    };
+  });
+}
+
+/**
+ * The on-pitch score (regulation + extra time), EXCLUDING any penalty shootout.
+ * For a match decided on penalties, `score.fullTime` folds the shootout in (e.g.
+ * a 1-1 won 4-3 on pens reports fullTime 4-5), so we sum regularTime+extraTime
+ * to recover the true scoreline. A REGULAR match carries only fullTime, which
+ * is already the on-pitch score, so we use it directly. Nulls (pre-match) pass
+ * through unchanged.
+ */
+function onPitchScore(score: FootballDataMatch['score']): ScorePair {
+  const { duration, regularTime, extraTime, fullTime } = score;
+  if (duration && duration !== 'REGULAR' && regularTime) {
+    return {
+      home: sumOrNull(regularTime.home, extraTime?.home),
+      away: sumOrNull(regularTime.away, extraTime?.away),
+    };
+  }
+  return fullTime;
+}
+
+// Sum a regulation score with an optional extra-time score, preserving null
+// when the regulation value is missing (a fixture with no result yet).
+function sumOrNull(base: number | null, extra: number | null | undefined): number | null {
+  if (base == null) return null;
+  return base + (extra ?? 0);
 }
 
 export async function fetchStandings(): Promise<FootballDataStanding[]> {

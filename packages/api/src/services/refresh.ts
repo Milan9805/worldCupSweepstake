@@ -352,6 +352,11 @@ function matchChanged(existing: Match | undefined, next: Match): boolean {
     existing.awayTeam !== next.awayTeam ||
     existing.homeScore !== next.homeScore ||
     existing.awayScore !== next.awayScore ||
+    // The shootout tally lands (from football-data) once a tie is finished —
+    // often with the on-pitch score unchanged — so compare it too or the result
+    // never persists and the bracket can't advance the penalty winner.
+    (existing.penaltyHome ?? null) !== (next.penaltyHome ?? null) ||
+    (existing.penaltyAway ?? null) !== (next.penaltyAway ?? null) ||
     existing.status !== next.status ||
     existing.stage !== next.stage ||
     existing.group !== next.group ||

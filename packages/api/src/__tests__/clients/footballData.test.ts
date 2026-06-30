@@ -50,12 +50,82 @@ describe('footballData client', () => {
         awayTeam: 'BRA',
         homeScore: 2,
         awayScore: 1,
+        penaltyHome: null,
+        penaltyAway: null,
         status: 'FINISHED',
         stage: 'GROUP_STAGE',
         group: 'A',
         datetime: '2026-06-14T18:00:00Z',
         venue: 'MetLife Stadium',
       });
+    });
+
+    it('maps a penalty shootout to the on-pitch score plus the shootout tally', async () => {
+      // football-data folds the shootout into fullTime (1-1 won 4-3 on pens →
+      // fullTime 4-5); we recover the real 1-1 from regularTime+extraTime and
+      // keep the shootout in penaltyHome/penaltyAway.
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          matches: [{
+            id: 777, utcDate: '2026-06-29T20:00:00Z', status: 'FINISHED',
+            stage: 'LAST_32', group: null,
+            homeTeam: { tla: 'GER', name: 'Germany' },
+            awayTeam: { tla: 'PAR', name: 'Paraguay' },
+            score: {
+              winner: 'AWAY_TEAM',
+              duration: 'PENALTY_SHOOTOUT',
+              fullTime: { home: 4, away: 5 },
+              halfTime: { home: 0, away: 1 },
+              regularTime: { home: 1, away: 1 },
+              extraTime: { home: 0, away: 0 },
+              penalties: { home: 3, away: 4 },
+            },
+            venue: 'TBC',
+          }],
+        }),
+      });
+
+      const result = await fetchMatches();
+      expect(result[0]).toMatchObject({
+        homeTeam: 'GER',
+        awayTeam: 'PAR',
+        homeScore: 1,
+        awayScore: 1,
+        penaltyHome: 3,
+        penaltyAway: 4,
+        stage: 'ROUND_OF_32',
+        status: 'FINISHED',
+      });
+    });
+
+    it('adds extra-time goals to the on-pitch score (excludes the shootout)', async () => {
+      // A 2-2 after extra time (1-1 reg + 1-1 ET) won on pens reads 2-2, not the
+      // pens-inflated fullTime.
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          matches: [{
+            id: 778, utcDate: '2026-06-29T20:00:00Z', status: 'FINISHED',
+            stage: 'LAST_16', group: null,
+            homeTeam: { tla: 'ENG', name: 'England' },
+            awayTeam: { tla: 'BRA', name: 'Brazil' },
+            score: {
+              winner: 'HOME_TEAM',
+              duration: 'PENALTY_SHOOTOUT',
+              fullTime: { home: 6, away: 5 },
+              halfTime: { home: 1, away: 0 },
+              regularTime: { home: 1, away: 1 },
+              extraTime: { home: 1, away: 1 },
+              penalties: { home: 4, away: 3 },
+            },
+            venue: 'TBC',
+          }],
+        }),
+      });
+
+      const result = await fetchMatches();
+      expect(result[0]).toMatchObject({ homeScore: 2, awayScore: 2, penaltyHome: 4, penaltyAway: 3 });
     });
 
     it('maps IN_PLAY status to LIVE', async () => {
