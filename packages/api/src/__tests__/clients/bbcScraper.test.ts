@@ -7,6 +7,7 @@ import {
   extractInitialData,
   parseBbcKnockoutTies,
   buildBbcKnockoutPatches,
+  fetchBbcData,
   ScrapedKnockoutTie,
 } from '../../clients/bbcScraper';
 import { Match, MatchAction } from '@sweepstake/shared';
@@ -852,6 +853,54 @@ describe('parseBbcKnockoutTies', () => {
     expect(tie).toMatchObject({ homeScore: 2, awayScore: 1, penaltyHome: null, penaltyAway: null });
   });
 
+  it('reads a live tie\'s minute and treats a bare "TBC" side as neither team nor feeder', () => {
+    const event = {
+      home: { fullName: 'Brazil', score: '0' },
+      away: { fullName: 'To be confirmed' }, // not a team, not a "Winner Match N" placeholder
+      startDateTime: '2026-06-29T17:00:00Z',
+      eventGroupingLabel: 'World - FIFA World Cup - Last 32',
+      status: 'MidEvent',
+      statusComment: { value: "63'" },
+      periodLabel: { value: "63'" },
+    };
+    const [tie] = parseBbcKnockoutTies(makeHtml([event]));
+    expect(tie.status).toBe('LIVE');
+    expect(tie.minute).toBe("63'");
+    expect(tie.homeTeam).toBe('BRA');
+    expect(tie.awayTeam).toBeNull();
+    expect(tie.awayFeeder).toBeNull();
+  });
+
+  it('skips an event with no grouping label, no start time, or an unparseable side', () => {
+    const ties = parseBbcKnockoutTies(
+      makeHtml([
+        // No eventGroupingLabel at all → no stage → skipped.
+        { home: { fullName: 'Brazil' }, away: { fullName: 'Japan' }, startDateTime: '2026-06-29T17:00:00Z' },
+        // Knockout round but no startDateTime → skipped.
+        {
+          home: { fullName: 'Brazil' },
+          away: { fullName: 'Japan' },
+          eventGroupingLabel: 'World - FIFA World Cup - Last 32',
+        },
+        // A side with no fullName at all resolves to neither team nor feeder.
+        {
+          home: {},
+          away: { fullName: 'Winner Match 5' },
+          startDateTime: '2026-06-29T18:00:00Z',
+          eventGroupingLabel: 'World - FIFA World Cup - Last 32',
+        },
+      ]),
+    );
+    expect(ties).toHaveLength(1);
+    expect(ties[0]).toMatchObject({ homeTeam: null, homeFeeder: null, awayFeeder: { feederNumber: 5 } });
+  });
+
+  it('returns [] when the page has data but no scores-fixtures entry', () => {
+    const data = { data: { 'some-other-widget': { data: {} } } };
+    const html = `<html><body><script>window.__INITIAL_DATA__=${JSON.stringify(JSON.stringify(data))};</script></body></html>`;
+    expect(parseBbcKnockoutTies(html)).toEqual([]);
+  });
+
   it('returns [] for a page with no fixtures data', () => {
     expect(parseBbcKnockoutTies('<html><body>no data</body></html>')).toEqual([]);
   });
@@ -975,5 +1024,145 @@ describe('buildBbcKnockoutPatches', () => {
   it('skips a tie that matches no stored row', () => {
     const tie = koTie({ homeTeam: 'ESP', awayTeam: 'ITA' });
     expect(buildBbcKnockoutPatches([tie], [koMatch()])).toEqual([]);
+  });
+
+  it('skips an all-placeholder tie when no stored row shares its kickoff', () => {
+    // No known team to anchor on, so it correlates by stage + kickoff — and when
+    // nothing matches that slot, it patches nothing (rather than the wrong row).
+    const tie = koTie({
+      homeTeam: null,
+      awayTeam: null,
+      homeFeeder: { outcome: 'WINNER', feederRound: 'MATCH', feederNumber: 89 },
+      awayFeeder: { outcome: 'WINNER', feederRound: 'MATCH', feederNumber: 90 },
+      datetime: '2026-07-01T15:00:00Z', // a slot no stored row occupies
+    });
+    expect(buildBbcKnockoutPatches([tie], [koMatch()])).toEqual([]);
+  });
+});
+
+describe('fetchBbcData', () => {
+  const originalFetch = global.fetch;
+  afterEach(() => {
+    global.fetch = originalFetch;
+    jest.restoreAllMocks();
+  });
+
+  // A scores-fixtures page built from raw knockout events (BBC's
+  // double-JSON-encoded window.__INITIAL_DATA__ blob).
+  function makeHtml(events: Record<string, unknown>[]): string {
+    const data = {
+      data: {
+        'sport-data-scores-fixtures?x=1': {
+          data: { eventGroups: [{ secondaryGroups: [{ events }] }] },
+        },
+      },
+    };
+    return `<html><body><script>window.__INITIAL_DATA__=${JSON.stringify(JSON.stringify(data))};</script></body></html>`;
+  }
+
+  const ko = (extra: Record<string, unknown>) => ({
+    eventGroupingLabel: 'World - FIFA World Cup - Last 16',
+    status: 'PreEvent',
+    statusComment: { value: 'Scheduled' },
+    ...extra,
+  });
+
+  it('fetches both pages once and dedupes knockout ties across them, preferring the more resolved / scored copy', async () => {
+    // Page A: a still-undrawn R16 tie, an unscored QF, and a finished R32 with no
+    // topic id (so it dedupes on stage+kickoff).
+    const pageA = makeHtml([
+      ko({
+        tipoTopicId: 'k-r16',
+        home: { fullName: 'Winner Match 89' },
+        away: { fullName: 'Winner Match 90' },
+        startDateTime: '2026-07-04T17:00:00Z',
+      }),
+      ko({
+        tipoTopicId: 'k-qf',
+        eventGroupingLabel: 'World - FIFA World Cup - Quarter-finals',
+        home: { fullName: 'Argentina' },
+        away: { fullName: 'Brazil' },
+        startDateTime: '2026-07-10T19:00:00Z',
+      }),
+      ko({
+        eventGroupingLabel: 'World - FIFA World Cup - Last 32',
+        home: { fullName: 'Spain', runningScores: { fulltime: '2' } },
+        away: { fullName: 'Morocco', runningScores: { fulltime: '0' } },
+        startDateTime: '2026-06-29T18:00:00Z',
+        status: 'PostEvent',
+        statusComment: { value: 'FT' },
+      }),
+    ]);
+    // Page B: the same three ties — R16 now drawn (more resolved), QF now finished
+    // with a score (more scored), and the R32 identical (kept as-is).
+    const pageB = makeHtml([
+      ko({
+        tipoTopicId: 'k-r16',
+        home: { fullName: 'Canada' },
+        away: { fullName: 'Morocco' },
+        startDateTime: '2026-07-04T17:00:00Z',
+      }),
+      ko({
+        tipoTopicId: 'k-qf',
+        eventGroupingLabel: 'World - FIFA World Cup - Quarter-finals',
+        home: { fullName: 'Argentina', runningScores: { fulltime: '2' } },
+        away: { fullName: 'Brazil', runningScores: { fulltime: '1' } },
+        startDateTime: '2026-07-10T19:00:00Z',
+        status: 'PostEvent',
+        statusComment: { value: 'FT' },
+      }),
+      ko({
+        eventGroupingLabel: 'World - FIFA World Cup - Last 32',
+        home: { fullName: 'Spain', runningScores: { fulltime: '2' } },
+        away: { fullName: 'Morocco', runningScores: { fulltime: '0' } },
+        startDateTime: '2026-06-29T18:00:00Z',
+        status: 'PostEvent',
+        statusComment: { value: 'FT' },
+      }),
+    ]);
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: true, text: async () => pageA })
+      .mockResolvedValueOnce({ ok: true, text: async () => pageB });
+    global.fetch = fetchMock as never;
+
+    const { knockout } = await fetchBbcData();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // Three distinct ties survive the cross-page dedupe (no duplicates).
+    expect(knockout).toHaveLength(3);
+
+    // The R16 tie kept page B's resolved teams over page A's placeholders.
+    const r16 = knockout.find((t) => t.stage === 'ROUND_OF_16');
+    expect(r16?.homeTeam).toBe('CAN');
+    expect(r16?.awayTeam).toBe('MAR');
+
+    // The QF tie kept page B's scored copy over page A's unscored one.
+    const qf = knockout.find((t) => t.stage === 'QUARTER_FINAL');
+    expect(qf?.homeScore).toBe(2);
+    expect(qf?.awayScore).toBe(1);
+
+    // The topic-id-less R32 tie deduped on stage+kickoff — present exactly once.
+    expect(knockout.filter((t) => t.stage === 'ROUND_OF_32')).toHaveLength(1);
+  });
+
+  it('still returns knockout ties when one page fails to fetch', async () => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const page = makeHtml([
+      ko({
+        tipoTopicId: 'k-r16',
+        home: { fullName: 'Canada' },
+        away: { fullName: 'Morocco' },
+        startDateTime: '2026-07-04T17:00:00Z',
+      }),
+    ]);
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: true, text: async () => page })
+      .mockResolvedValueOnce({ ok: false, status: 500, statusText: 'Server Error' });
+    global.fetch = fetchMock as never;
+
+    const { knockout } = await fetchBbcData();
+    expect(knockout).toHaveLength(1);
+    expect(knockout[0].homeTeam).toBe('CAN');
   });
 });
