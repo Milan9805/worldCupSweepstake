@@ -209,6 +209,36 @@ describe('TeamCard', () => {
       expect(screen.getByText(/ENG 2 - 1 BRA/)).toBeInTheDocument();
     });
 
+    it('labels an unresolved knockout opponent from its feeder — never "vs null"', () => {
+      const next = makeMatch({
+        matchId: 'r16',
+        stage: 'ROUND_OF_16',
+        awayTeam: '',
+        awayFeeder: { outcome: 'WINNER', feederRound: 'MATCH', feederNumber: 77 },
+        status: 'SCHEDULED',
+        datetime: '2026-07-04T21:00:00Z',
+      });
+      render(
+        <TeamCard team={makeTeam()} matchInfo={{ live: null, next, previous: null }} teamsByCode={teamsByCode} />
+      );
+      expect(screen.getByText(/vs Winner Match 77/)).toBeInTheDocument();
+      expect(screen.queryByText(/vs null/)).not.toBeInTheDocument();
+    });
+
+    it('shows "TBD" for an unresolved knockout opponent with no feeder', () => {
+      const next = makeMatch({
+        matchId: 'r16',
+        stage: 'ROUND_OF_16',
+        awayTeam: '',
+        status: 'SCHEDULED',
+        datetime: '2026-07-04T21:00:00Z',
+      });
+      render(
+        <TeamCard team={makeTeam()} matchInfo={{ live: null, next, previous: null }} teamsByCode={teamsByCode} />
+      );
+      expect(screen.getByText(/vs TBD/)).toBeInTheDocument();
+    });
+
     it('shows a W tag when the team won the previous game', () => {
       const previous = makeMatch({ status: 'FINISHED', homeScore: 2, awayScore: 1 });
       render(

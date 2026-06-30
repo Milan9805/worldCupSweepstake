@@ -47,8 +47,10 @@ describe('KnockoutTree', () => {
     const r32 = screen.getByTestId('round-column-ROUND_OF_32');
     const text = r32.textContent ?? '';
     expect(text.indexOf('ENG')).toBeLessThan(text.indexOf('GER'));
-    // A real tie replaces the placeholders in that round.
-    expect(within(r32).queryByText('TBD')).not.toBeInTheDocument();
+    // Both real ties render (the round is padded out to its full size with TBD
+    // placeholders, but the actual fixtures show their teams).
+    expect(within(r32).getByText('ENG')).toBeInTheDocument();
+    expect(within(r32).getByText('FRA')).toBeInTheDocument();
   });
 
   it('shows flags, owners and the kick-off time on a tie', () => {
@@ -80,27 +82,51 @@ describe('KnockoutTree', () => {
     render(<KnockoutTree matches={matches} />);
     expect(screen.getByText('FT')).toBeInTheDocument();
     // The winning side's row carries the green highlight; the loser's does not.
-    // Scoped to the Round of 32 column because the winner (ENG) now also appears
-    // in the calculated Round of 16.
     const r32 = screen.getByTestId('round-column-ROUND_OF_32');
     expect(within(r32).getByText('ENG').closest('div')).toHaveClass('bg-green-900/40');
     expect(within(r32).getByText('BRA').closest('div')).not.toHaveClass('bg-green-900/40');
   });
 
-  it('advances the winners of finished ties into the next round', () => {
-    // RSA-CAN (CAN win) is the earlier R32 tie, BRA-JPN (BRA win) the later one,
-    // so both winners feed the same Round of 16 tie.
+  it('shows each round\'s real fixtures from the feed', () => {
+    // The R16 matchup comes straight from the feed's R16 fixture — not computed
+    // from R32 winners (which could pair the wrong teams).
     const matches = [
       makeMatch({ matchId: 'm1', homeTeam: 'RSA', awayTeam: 'CAN', homeScore: 0, awayScore: 1, status: 'FINISHED', datetime: '2026-06-28T19:00:00Z' }),
-      makeMatch({ matchId: 'm2', homeTeam: 'BRA', awayTeam: 'JPN', homeScore: 2, awayScore: 1, status: 'FINISHED', datetime: '2026-06-29T18:00:00Z' }),
+      makeMatch({ matchId: 'r16', stage: 'ROUND_OF_16', homeTeam: 'CAN', awayTeam: 'MAR', status: 'SCHEDULED', datetime: '2026-07-04T17:00:00Z' }),
     ];
     render(<KnockoutTree matches={matches} />);
     const r16 = screen.getByTestId('round-column-ROUND_OF_16');
     expect(within(r16).getByText('CAN')).toBeInTheDocument();
-    expect(within(r16).getByText('BRA')).toBeInTheDocument();
-    // The eliminated sides do not advance.
-    expect(within(r16).queryByText('JPN')).not.toBeInTheDocument();
-    expect(within(r16).queryByText('RSA')).not.toBeInTheDocument();
+    expect(within(r16).getByText('MAR')).toBeInTheDocument();
+  });
+
+  it('does not invent a next-round tie when the feed has no fixture for it', () => {
+    // A finished R32 tie with no R16 fixture yet: the winner is NOT computed into
+    // the next round (the old positional pairing did, and paired wrongly).
+    const matches = [
+      makeMatch({ matchId: 'm1', homeTeam: 'RSA', awayTeam: 'CAN', homeScore: 0, awayScore: 1, status: 'FINISHED', datetime: '2026-06-28T19:00:00Z' }),
+    ];
+    render(<KnockoutTree matches={matches} />);
+    const r16 = screen.getByTestId('round-column-ROUND_OF_16');
+    expect(within(r16).queryByText('CAN')).not.toBeInTheDocument();
+  });
+
+  it('labels an unresolved opponent from its feeder instead of blank', () => {
+    const matches = [
+      makeMatch({
+        matchId: 'r16',
+        stage: 'ROUND_OF_16',
+        homeTeam: 'PAR',
+        awayTeam: '',
+        awayFeeder: { outcome: 'WINNER', feederRound: 'MATCH', feederNumber: 77 },
+        status: 'SCHEDULED',
+        datetime: '2026-07-04T21:00:00Z',
+      }),
+    ];
+    render(<KnockoutTree matches={matches} />);
+    const r16 = screen.getByTestId('round-column-ROUND_OF_16');
+    expect(within(r16).getByText('PAR')).toBeInTheDocument();
+    expect(within(r16).getByText('Winner Match 77')).toBeInTheDocument();
   });
 
   describe('claimed-member highlight', () => {
@@ -132,10 +158,11 @@ describe('KnockoutTree', () => {
         .toHaveAttribute('data-involves-claimed', 'false');
     });
 
-    it('flags a calculated next-round tie the claimed member advances into', () => {
-      // Alice owns ENG; ENG wins its R32 tie, so the derived R16 tie is flagged too.
+    it('flags a later-round tie the claimed member is in', () => {
+      // Alice owns ENG; the feed's R16 fixture has ENG, so it's flagged too.
       const matches = [
         makeMatch({ matchId: 'a', homeTeam: 'ENG', awayTeam: 'BRA', homeScore: 2, awayScore: 0, status: 'FINISHED', datetime: '2026-06-28T20:00:00Z' }),
+        makeMatch({ matchId: 'r16', stage: 'ROUND_OF_16', homeTeam: 'ENG', awayTeam: 'GER', status: 'SCHEDULED', datetime: '2026-07-04T20:00:00Z' }),
       ];
       render(<KnockoutTree matches={matches} teamOwners={owners} claimedPerson="Alice" />);
       const r16 = screen.getByTestId('round-column-ROUND_OF_16');

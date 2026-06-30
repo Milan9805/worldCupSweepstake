@@ -3,7 +3,7 @@ import {
   determineQualifiedTeams,
   isGroupStageComplete,
   buildKnockoutTree,
-  fillKnockoutOpponents,
+  tieWinner,
   ROUND_SIZES,
 } from '../bracket';
 import { Team, Match } from '../types';
@@ -218,15 +218,8 @@ describe('buildKnockoutTree', () => {
     };
   }
 
-  // RSA-CAN (CAN win) is the earlier R32 tie, BRA-JPN (BRA win) the later one,
-  // so they pair into R16 slot 0 as home=CAN (slot 0 winner), away=BRA (slot 1).
-  const finishedR32 = () => [
-    makeMatch({ matchId: 'm1', homeTeam: 'RSA', awayTeam: 'CAN', homeScore: 0, awayScore: 1, status: 'FINISHED', datetime: '2026-06-28T19:00:00Z' }),
-    makeMatch({ matchId: 'm2', homeTeam: 'BRA', awayTeam: 'JPN', homeScore: 2, awayScore: 1, status: 'FINISHED', datetime: '2026-06-29T18:00:00Z' }),
-  ];
-
   it('always returns the full bracket shape (16/8/4/2/1), path to the final intact', () => {
-    const rounds = buildKnockoutTree(finishedR32());
+    const rounds = buildKnockoutTree([]);
     expect(rounds.map((r) => r.round)).toEqual([
       'ROUND_OF_32', 'ROUND_OF_16', 'QUARTER_FINAL', 'SEMI_FINAL', 'FINAL',
     ]);
@@ -235,126 +228,77 @@ describe('buildKnockoutTree', () => {
     expect(rounds.find((r) => r.round === 'FINAL')!.slots).toHaveLength(1);
   });
 
-  it('advances both R32 winners into the correct R16 slot, in feeder order', () => {
-    const rounds = buildKnockoutTree(finishedR32());
-    const r16Slot0 = rounds.find((r) => r.round === 'ROUND_OF_16')!.slots[0];
-    expect(r16Slot0.homeTeam).toBe('CAN'); // winner of the earlier tie (slot 0)
-    expect(r16Slot0.awayTeam).toBe('BRA'); // winner of the later tie (slot 1)
-  });
-
-  it('leaves a slot TBD (null) when a feeding tie is not yet finished', () => {
+  it('takes each round straight from the feed fixtures, in kick-off order', () => {
     const matches = [
-      makeMatch({ matchId: 'm1', homeTeam: 'RSA', awayTeam: 'CAN', homeScore: 0, awayScore: 1, status: 'FINISHED' }),
-      makeMatch({ matchId: 'm2', homeTeam: 'BRA', awayTeam: 'JPN', status: 'LIVE', homeScore: 1, awayScore: 1, minute: "60'", datetime: '2026-06-29T18:00:00Z' }),
+      makeMatch({ matchId: 'late', stage: 'ROUND_OF_16', homeTeam: 'PAR', awayTeam: 'URU', datetime: '2026-07-04T21:00:00Z' }),
+      makeMatch({ matchId: 'early', stage: 'ROUND_OF_16', homeTeam: 'CAN', awayTeam: 'MAR', datetime: '2026-07-04T17:00:00Z' }),
     ];
-    const r16Slot0 = buildKnockoutTree(matches).find((r) => r.round === 'ROUND_OF_16')!.slots[0];
-    expect(r16Slot0.homeTeam).toBe('CAN');
-    expect(r16Slot0.awayTeam).toBeNull(); // BRA-JPN undecided → no winner yet
+    const r16 = buildKnockoutTree(matches).find((r) => r.round === 'ROUND_OF_16')!.slots;
+    expect(r16[0].slotId).toBe('early'); // 17:00 before 21:00
+    expect([r16[0].homeTeam, r16[0].awayTeam]).toEqual(['CAN', 'MAR']);
+    expect([r16[1].homeTeam, r16[1].awayTeam]).toEqual(['PAR', 'URU']);
   });
 
-  it('advances the penalty shootout winner from a level score', () => {
+  it('uses the feed matchup verbatim — never a positional pairing of R32 winners', () => {
+    // Regression: GER-PAR and NED-MAR finish, but their winners are NOT bracket-
+    // adjacent. The feed says CAN v MAR and PAR v <tbd>; the tree must show those,
+    // not pair PAR with MAR by kick-off position.
     const matches = [
-      makeMatch({
-        matchId: 'm1', homeTeam: 'RSA', awayTeam: 'CAN',
-        homeScore: 1, awayScore: 1, penaltyHome: 3, penaltyAway: 4, status: 'FINISHED',
-      }),
+      makeMatch({ matchId: 'r32a', homeTeam: 'GER', awayTeam: 'PAR', homeScore: 1, awayScore: 1, penaltyHome: 3, penaltyAway: 4, status: 'FINISHED', datetime: '2026-06-29T20:30:00Z' }),
+      makeMatch({ matchId: 'r32b', homeTeam: 'NED', awayTeam: 'MAR', homeScore: 1, awayScore: 1, penaltyHome: 2, penaltyAway: 3, status: 'FINISHED', datetime: '2026-06-30T01:00:00Z' }),
+      makeMatch({ matchId: 'r16a', stage: 'ROUND_OF_16', homeTeam: 'CAN', awayTeam: 'MAR', status: 'SCHEDULED', datetime: '2026-07-04T17:00:00Z' }),
+      makeMatch({ matchId: 'r16b', stage: 'ROUND_OF_16', homeTeam: 'PAR', awayTeam: '', awayFeeder: { outcome: 'WINNER', feederRound: 'MATCH', feederNumber: 77 }, status: 'SCHEDULED', datetime: '2026-07-04T21:00:00Z' }),
     ];
-    const r16Slot0 = buildKnockoutTree(matches).find((r) => r.round === 'ROUND_OF_16')!.slots[0];
-    expect(r16Slot0.homeTeam).toBe('CAN'); // CAN won the shootout 4–3
+    const r16 = buildKnockoutTree(matches).find((r) => r.round === 'ROUND_OF_16')!.slots;
+    expect([r16[0].homeTeam, r16[0].awayTeam]).toEqual(['CAN', 'MAR']);
+    expect(r16[1].homeTeam).toBe('PAR');
+    expect(r16[1].awayTeam).toBeNull(); // genuinely undecided — NOT "MAR"
   });
 
-  it('does not resolve a winner from a level score with no shootout tally', () => {
+  it('carries a finished tie\'s score and shootout tally onto its slot', () => {
     const matches = [
-      makeMatch({ matchId: 'm1', homeTeam: 'RSA', awayTeam: 'CAN', homeScore: 1, awayScore: 1, status: 'FINISHED' }),
+      makeMatch({ matchId: 'r16', stage: 'ROUND_OF_16', homeTeam: 'GER', awayTeam: 'PAR', homeScore: 1, awayScore: 1, penaltyHome: 3, penaltyAway: 4, status: 'FINISHED', datetime: '2026-07-04T17:00:00Z' }),
     ];
-    const r16Slot0 = buildKnockoutTree(matches).find((r) => r.round === 'ROUND_OF_16')!.slots[0];
-    expect(r16Slot0.homeTeam).toBeNull();
+    const slot = buildKnockoutTree(matches).find((r) => r.round === 'ROUND_OF_16')!.slots[0];
+    expect(slot).toMatchObject({ slotId: 'r16', status: 'FINISHED', homeScore: 1, awayScore: 1, penaltyHome: 3, penaltyAway: 4 });
   });
 
-  it('attaches a real later-round fixture so its score and status surface', () => {
+  it('shows an unresolved side as null and carries its feeder label', () => {
     const matches = [
-      ...finishedR32(),
-      makeMatch({
-        matchId: 'r16', stage: 'ROUND_OF_16', homeTeam: 'CAN', awayTeam: 'BRA',
-        homeScore: 3, awayScore: 2, status: 'FINISHED', datetime: '2026-07-04T17:00:00Z',
-      }),
+      makeMatch({ matchId: 'r16', stage: 'ROUND_OF_16', homeTeam: 'PAR', awayTeam: '', awayFeeder: { outcome: 'WINNER', feederRound: 'MATCH', feederNumber: 77 }, status: 'SCHEDULED', datetime: '2026-07-04T21:00:00Z' }),
     ];
-    const r16Slot0 = buildKnockoutTree(matches).find((r) => r.round === 'ROUND_OF_16')!.slots[0];
-    expect(r16Slot0.slotId).toBe('r16');
-    expect(r16Slot0.status).toBe('FINISHED');
-    expect(r16Slot0.homeScore).toBe(3);
-    expect(r16Slot0.awayScore).toBe(2);
+    const slot = buildKnockoutTree(matches).find((r) => r.round === 'ROUND_OF_16')!.slots[0];
+    expect(slot.homeTeam).toBe('PAR');
+    expect(slot.awayTeam).toBeNull();
+    expect(slot.awayFeeder).toEqual({ outcome: 'WINNER', feederRound: 'MATCH', feederNumber: 77 });
   });
 
-  it('borrows the kick-off from a half-drawn fixture (one team still null upstream)', () => {
-    const matches = [
-      ...finishedR32(),
-      // The feed has placed CAN but not yet the opponent.
-      makeMatch({
-        matchId: 'r16', stage: 'ROUND_OF_16', homeTeam: 'CAN', awayTeam: '',
-        status: 'SCHEDULED', datetime: '2026-07-04T17:00:00Z',
-      }),
-    ];
-    const r16Slot0 = buildKnockoutTree(matches).find((r) => r.round === 'ROUND_OF_16')!.slots[0];
-    // Calculated matchup is shown in full, dated from the half-drawn fixture.
-    expect(r16Slot0.homeTeam).toBe('CAN');
-    expect(r16Slot0.awayTeam).toBe('BRA');
-    expect(r16Slot0.datetime).toBe('2026-07-04T17:00:00Z');
+  it('pads a round that has no fixtures yet with TBD placeholder slots', () => {
+    const slots = buildKnockoutTree([]).find((r) => r.round === 'QUARTER_FINAL')!.slots;
+    expect(slots).toHaveLength(ROUND_SIZES.QUARTER_FINAL);
+    expect(slots.every((s) => s.homeTeam === null && s.awayTeam === null)).toBe(true);
+  });
+});
+
+describe('tieWinner', () => {
+  const slot = (over: Partial<import('../bracket').BracketSlot> = {}) => ({
+    slotId: 's', homeTeam: 'CAN', awayTeam: 'BRA', homeScore: null, awayScore: null,
+    status: 'FINISHED' as const, datetime: null, ...over,
   });
 
-  it('falls back to TBD on both sides when no R32 ties are finished', () => {
-    const matches = [
-      makeMatch({ matchId: 'm1', homeTeam: 'RSA', awayTeam: 'CAN', status: 'SCHEDULED' }),
-    ];
-    const r16Slot0 = buildKnockoutTree(matches).find((r) => r.round === 'ROUND_OF_16')!.slots[0];
-    expect(r16Slot0.homeTeam).toBeNull();
-    expect(r16Slot0.awayTeam).toBeNull();
+  it('returns the higher-scoring side', () => {
+    expect(tieWinner(slot({ homeScore: 2, awayScore: 1 }))).toBe('CAN');
+    expect(tieWinner(slot({ homeScore: 0, awayScore: 1 }))).toBe('BRA');
   });
 
-  describe('fillKnockoutOpponents', () => {
-    // Both R32 ties decided (CAN, BRA win) plus the feed's half-drawn R16 fixture
-    // that only knows CAN so far.
-    const base = () => [
-      makeMatch({ matchId: 'm1', homeTeam: 'RSA', awayTeam: 'CAN', homeScore: 0, awayScore: 1, status: 'FINISHED', datetime: '2026-06-28T19:00:00Z' }),
-      makeMatch({ matchId: 'm2', homeTeam: 'BRA', awayTeam: 'JPN', homeScore: 2, awayScore: 1, status: 'FINISHED', datetime: '2026-06-29T18:00:00Z' }),
-    ];
+  it('resolves a level score on the shootout tally', () => {
+    expect(tieWinner(slot({ homeScore: 1, awayScore: 1, penaltyHome: 4, penaltyAway: 3 }))).toBe('CAN');
+    expect(tieWinner(slot({ homeScore: 1, awayScore: 1, penaltyHome: 2, penaltyAway: 4 }))).toBe('BRA');
+  });
 
-    it('fills the unresolved side of a knockout fixture from the bracket winners', () => {
-      const matches = [
-        ...base(),
-        makeMatch({ matchId: 'r16', stage: 'ROUND_OF_16', homeTeam: 'CAN', awayTeam: '', status: 'SCHEDULED', datetime: '2026-07-04T17:00:00Z' }),
-      ];
-      const r16 = fillKnockoutOpponents(matches).find((m) => m.matchId === 'r16')!;
-      expect(r16.homeTeam).toBe('CAN');
-      expect(r16.awayTeam).toBe('BRA');
-    });
-
-    it('preserves orientation when the known team is the away side', () => {
-      const matches = [
-        ...base(),
-        makeMatch({ matchId: 'r16', stage: 'ROUND_OF_16', homeTeam: '', awayTeam: 'CAN', status: 'SCHEDULED', datetime: '2026-07-04T17:00:00Z' }),
-      ];
-      const r16 = fillKnockoutOpponents(matches).find((m) => m.matchId === 'r16')!;
-      expect(r16.homeTeam).toBe('BRA');
-      expect(r16.awayTeam).toBe('CAN');
-    });
-
-    it('leaves a fixture unchanged when the feeding tie is not yet decided', () => {
-      const matches = [
-        makeMatch({ matchId: 'm1', homeTeam: 'RSA', awayTeam: 'CAN', homeScore: 0, awayScore: 1, status: 'FINISHED', datetime: '2026-06-28T19:00:00Z' }),
-        makeMatch({ matchId: 'm2', homeTeam: 'BRA', awayTeam: 'JPN', status: 'LIVE', datetime: '2026-06-29T18:00:00Z' }),
-        makeMatch({ matchId: 'r16', stage: 'ROUND_OF_16', homeTeam: 'CAN', awayTeam: '', status: 'SCHEDULED', datetime: '2026-07-04T17:00:00Z' }),
-      ];
-      const r16 = fillKnockoutOpponents(matches).find((m) => m.matchId === 'r16')!;
-      expect(r16.awayTeam).toBe(''); // BRA/JPN undecided → no opponent yet
-    });
-
-    it('leaves group-stage and already-complete fixtures untouched', () => {
-      const group = makeMatch({ matchId: 'g', stage: 'GROUP_STAGE', group: 'A', homeTeam: 'RSA', awayTeam: '' });
-      const complete = makeMatch({ matchId: 'r16', stage: 'ROUND_OF_16', homeTeam: 'CAN', awayTeam: 'BRA', status: 'SCHEDULED', datetime: '2026-07-04T17:00:00Z' });
-      const out = fillKnockoutOpponents([...base(), group, complete]);
-      expect(out.find((m) => m.matchId === 'g')!.awayTeam).toBe(''); // group match left alone
-      expect(out.find((m) => m.matchId === 'r16')!.awayTeam).toBe('BRA'); // unchanged
-    });
+  it('returns null when undecided (unfinished, or level with no shootout)', () => {
+    expect(tieWinner(slot({ homeScore: 1, awayScore: 1 }))).toBeNull();
+    expect(tieWinner(slot({ status: 'LIVE', homeScore: 2, awayScore: 1 }))).toBeNull();
+    expect(tieWinner(slot({ homeScore: null, awayScore: null }))).toBeNull();
   });
 });

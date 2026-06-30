@@ -1,4 +1,4 @@
-import { Match } from '@sweepstake/shared';
+import { Match, KnockoutFeeder } from '@sweepstake/shared';
 
 // Shared date/time formatters for fixtures. UK locale + timezone so the
 // whole app shows kick-off times the way the sweepstake group expects.
@@ -77,6 +77,16 @@ export function formatPens(
 ): string | null {
   if (penaltyHome == null || penaltyAway == null) return null;
   return `pens ${penaltyHome}–${penaltyAway}`;
+}
+
+// A short label for a knockout side the draw hasn't resolved to a team yet,
+// naming the tie it feeds from — "Winner Match 77", "Winner QF 1", "Loser SF 2".
+// Returns null when there's no feeder (so callers fall back to "TBD").
+export function feederLabel(feeder: KnockoutFeeder | null | undefined): string | null {
+  if (!feeder) return null;
+  const round =
+    feeder.feederRound === 'MATCH' ? 'Match' : feeder.feederRound === 'QUARTER_FINAL' ? 'QF' : 'SF';
+  return `${feeder.outcome === 'WINNER' ? 'Winner' : 'Loser'} ${round} ${feeder.feederNumber}`;
 }
 
 // Human-friendly label for a match's stage. Group-stage matches show their group

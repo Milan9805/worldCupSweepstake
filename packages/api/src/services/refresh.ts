@@ -1,5 +1,10 @@
 import { fetchMatches } from '../clients/footballData';
-import { fetchBbcFixtures, buildBbcPatches, ScrapedFixture } from '../clients/bbcScraper';
+import {
+  fetchBbcData,
+  buildBbcPatches,
+  buildBbcKnockoutPatches,
+  ScrapedFixture,
+} from '../clients/bbcScraper';
 import { fetchMatchCards } from '../clients/bbcMatchPage';
 import { fetchTvListings, buildChannelPatches } from '../clients/footballTvScraper';
 import { getAllMatches, getAllTeams, batchPutMatches, batchPutTeams, getConfig, putConfig, putEvent } from '../db/dynamodb';
@@ -12,6 +17,7 @@ import {
   RefreshResponse,
   ChannelBroadcast,
   FeedEvent,
+  KnockoutFeeder,
   hasActiveMatchWindow,
 } from '@sweepstake/shared';
 import { finalizeGroupStageIfReady, markKnockoutLosersEliminated, markCompletedGroupEliminations } from './knockout';
@@ -79,15 +85,24 @@ export async function refreshData(preloadedMatches?: Match[]): Promise<RefreshRe
     // here is logged and must not undo the good API sync.
     if (hasActiveMatchWindow(matches, now)) {
       try {
-        const scraped = await fetchBbcFixtures();
-        const livePatches = buildBbcPatches(scraped, matches);
+        const bbc = await fetchBbcData();
+        const livePatches = buildBbcPatches(bbc.fixtures, matches);
         matches = await mergeAndWrite(matches, livePatches, (p) => p.matchId, teamsById, {
           onlyExisting: true,
         });
-        if (livePatches.length > 0) source = 'bbc';
+        // BBC owns the knockout bracket: its ties carry the real matchups, the
+        // shootout tally (split out in runningScores) and the feeder labels, so
+        // it finalises a knockout — and advances the bracket — without waiting on
+        // football-data. Applied after the live overlay so a decisive result wins
+        // over the held-LIVE clamp above.
+        const koPatches = buildBbcKnockoutPatches(bbc.knockout, matches);
+        matches = await mergeAndWrite(matches, koPatches, (p) => p.matchId, teamsById, {
+          onlyExisting: true,
+        });
+        if (livePatches.length > 0 || koPatches.length > 0) source = 'bbc';
         // The fixtures feed carries goals + red cards but NOT yellows; the per-
         // match page has the full card list. Overlay it for in-play matches.
-        matches = await overlayMatchPageCards(matches, scraped, teamsById, prevStatusById);
+        matches = await overlayMatchPageCards(matches, bbc.fixtures, teamsById, prevStatusById);
       } catch (liveError) {
         console.warn('BBC live overlay failed (keeping API data):', liveError);
       }
@@ -95,10 +110,12 @@ export async function refreshData(preloadedMatches?: Match[]): Promise<RefreshRe
   } catch (apiError) {
     console.warn('Football Data API refresh failed, falling back to BBC scraper:', apiError);
     try {
-      const scraped = await fetchBbcFixtures();
-      const patches = buildBbcPatches(scraped, matches);
+      const bbc = await fetchBbcData();
+      const patches = buildBbcPatches(bbc.fixtures, matches);
       matches = await mergeAndWrite(matches, patches, (p) => p.matchId, teamsById, { onlyExisting: true });
-      matches = await overlayMatchPageCards(matches, scraped, teamsById, prevStatusById);
+      const koPatches = buildBbcKnockoutPatches(bbc.knockout, matches);
+      matches = await mergeAndWrite(matches, koPatches, (p) => p.matchId, teamsById, { onlyExisting: true });
+      matches = await overlayMatchPageCards(matches, bbc.fixtures, teamsById, prevStatusById);
       source = 'bbc';
       refreshedAt = now;
       await putConfig('lastRefreshTime', String(now));
@@ -364,6 +381,10 @@ function matchChanged(existing: Match | undefined, next: Match): boolean {
     // never persists and the bracket can't advance the penalty winner.
     (existing.penaltyHome ?? null) !== (next.penaltyHome ?? null) ||
     (existing.penaltyAway ?? null) !== (next.penaltyAway ?? null) ||
+    // A feeder label landing (or resolving away) carries no score change, so
+    // compare it too or the unresolved-opponent label never persists.
+    !sameFeeder(existing.homeFeeder, next.homeFeeder) ||
+    !sameFeeder(existing.awayFeeder, next.awayFeeder) ||
     existing.status !== next.status ||
     existing.stage !== next.stage ||
     existing.group !== next.group ||
@@ -389,6 +410,16 @@ function sameActions(a: MatchAction[] | undefined, b: MatchAction[] | undefined)
       action.player === y[i].player &&
       action.type === y[i].type &&
       action.minute === y[i].minute,
+  );
+}
+
+/** Structural equality for two knockout feeders (both absent counts as equal). */
+function sameFeeder(a: KnockoutFeeder | null | undefined, b: KnockoutFeeder | null | undefined): boolean {
+  if (!a || !b) return !a && !b;
+  return (
+    a.outcome === b.outcome &&
+    a.feederRound === b.feederRound &&
+    a.feederNumber === b.feederNumber
   );
 }
 

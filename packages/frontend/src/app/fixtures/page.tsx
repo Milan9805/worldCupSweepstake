@@ -9,7 +9,6 @@ import FilterTabs from '@/components/FilterTabs';
 import TeamFilterDropdown from '@/components/TeamFilterDropdown';
 import MatchList from '@/components/MatchList';
 import LiveBadge from '@/components/LiveBadge';
-import { fillKnockoutOpponents } from '@sweepstake/shared';
 import { useGroup } from '@/hooks/GroupContext';
 import { useNow } from '@/hooks/useNow';
 import { buildOwnersByTeam } from '@/lib/owners';
@@ -67,11 +66,10 @@ export default function FixturesPage() {
   // identity is stable for the `visible` memo below (which depends on it).
   const ownersByTeam = useMemo(() => buildOwnersByTeam(group?.members ?? []), [group?.members]);
 
-  // Resolve knockout fixtures whose opponent the feed hasn't filled in yet from
-  // the calculated bracket, so the list shows "CAN vs BRA" once BRA advances
-  // (and the team filter / owner brackets see the real matchup) rather than a
-  // half-empty "CAN vs" row.
-  const resolvedMatches = useMemo(() => fillKnockoutOpponents(matches), [matches]);
+  // The scraped fixtures already carry each knockout tie's real matchup (and a
+  // feeder for any side the draw hasn't filled yet), so the list reads straight
+  // from them — no bracket recomputation that could disagree with the tree.
+  const resolvedMatches = matches;
 
   // Only offer the teams that actually appear in a fixture, alphabetised, so the
   // dropdown can't filter to a team with nothing to show.

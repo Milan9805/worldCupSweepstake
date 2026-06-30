@@ -1,4 +1,4 @@
-import { Team, Match, ChannelBroadcast, MatchStatus } from './types';
+import { Team, Match, ChannelBroadcast, MatchStatus, KnockoutFeeder } from './types';
 
 /**
  * FIFA 2026 World Cup group-stage qualification.
@@ -141,18 +141,21 @@ export function isGroupStageComplete(teams: Team[]): boolean {
 // ===== Knockout tree (winner advancement) =====
 
 /**
- * One tie in the bracket. Like a Match but the two sides may be undecided
- * (`null` = "to be confirmed") because later rounds are calculated from the
- * winners of earlier ones rather than coming from the fixtures feed.
+ * One tie in the bracket, taken straight from a knockout fixture. A side is
+ * `null` when the draw hasn't placed a team there yet; `homeFeeder`/`awayFeeder`
+ * then name the tie it comes from ("Winner of Match 77") so the UI can label it
+ * instead of a bare "TBD".
  */
 export interface BracketSlot {
-  slotId: string; // stable React key: the feed matchId when attached, else `${round}-${index}`
+  slotId: string; // stable React key: the feed matchId, else `${round}-${index}` for a padding slot
   homeTeam: string | null;
   awayTeam: string | null;
+  homeFeeder?: KnockoutFeeder | null;
+  awayFeeder?: KnockoutFeeder | null;
   homeScore: number | null;
   awayScore: number | null;
-  // Penalty shootout tally for a tie decided on pens (null otherwise); breaks a
-  // level score in winnerOf and drives the "pens H–A" line in the bracket.
+  // Penalty shootout tally for a tie decided on pens (null otherwise); drives the
+  // winner highlight and the "pens H–A" line in the bracket.
   penaltyHome?: number | null;
   penaltyAway?: number | null;
   status: MatchStatus;
@@ -172,6 +175,8 @@ function matchToSlot(m: Match): BracketSlot {
     slotId: m.matchId,
     homeTeam: m.homeTeam || null,
     awayTeam: m.awayTeam || null,
+    homeFeeder: m.homeFeeder ?? null,
+    awayFeeder: m.awayFeeder ?? null,
     homeScore: m.homeScore,
     awayScore: m.awayScore,
     penaltyHome: m.penaltyHome ?? null,
@@ -183,146 +188,63 @@ function matchToSlot(m: Match): BracketSlot {
   };
 }
 
-// The team that advances from a tie, or null when it isn't decided yet (not
-// finished, or a level score with no penalty result to break it). A tie level
-// after extra time is resolved by the penalty shootout tally.
-function winnerOf(slot: BracketSlot | undefined): string | null {
-  if (!slot || slot.status !== 'FINISHED') return null;
-  if (slot.homeScore == null || slot.awayScore == null) return null;
+function emptySlot(round: string, index: number): BracketSlot {
+  return {
+    slotId: `${round}-${index}`,
+    homeTeam: null,
+    awayTeam: null,
+    homeFeeder: null,
+    awayFeeder: null,
+    homeScore: null,
+    awayScore: null,
+    penaltyHome: null,
+    penaltyAway: null,
+    status: 'SCHEDULED',
+    datetime: null,
+    minute: null,
+  };
+}
+
+/**
+ * Build the knockout bracket straight from the fixtures feed — one column per
+ * round, each round's real fixtures in kick-off order. The fixtures are the
+ * source of truth for the matchups: the scraper resolves each tie's teams (and
+ * an unresolved side's feeder, e.g. "Winner of Match 77") as the draw fills in,
+ * so we never *guess* who plays whom. A round with fewer fixtures than its size
+ * is padded with placeholder slots so the full path to the final always renders.
+ *
+ * (The pairing is deliberately NOT computed by position: the real bracket order
+ * isn't recoverable from kick-off time — adjacent-by-time ties are not
+ * adjacent-in-bracket — so anything other than the feed's own matchups is wrong.)
+ */
+export function buildKnockoutTree(matches: Match[]): TreeRound[] {
+  return ROUNDS.map((round) => {
+    const slots = matches
+      .filter((m) => m.stage === round)
+      .sort((a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime())
+      .map(matchToSlot);
+
+    for (let k = slots.length; k < ROUND_SIZES[round]; k++) {
+      slots.push(emptySlot(round, k));
+    }
+
+    return { round, label: ROUND_LABELS[round], slots };
+  });
+}
+
+/**
+ * The team that advances from a finished tie, or null when it isn't decided
+ * (unfinished, missing score, or level with no shootout tally). A tie level on
+ * the pitch is resolved by the penalty shootout. Used to wire the bracket's
+ * connector lines by tracing a placed team back to the tie it won.
+ */
+export function tieWinner(slot: BracketSlot): string | null {
+  if (slot.status !== 'FINISHED' || slot.homeScore == null || slot.awayScore == null) return null;
   if (slot.homeScore > slot.awayScore) return slot.homeTeam;
   if (slot.awayScore > slot.homeScore) return slot.awayTeam;
-  // Level on the pitch — decided on penalties when we have the shootout tally.
   if (slot.penaltyHome != null && slot.penaltyAway != null) {
     if (slot.penaltyHome > slot.penaltyAway) return slot.homeTeam;
     if (slot.penaltyAway > slot.penaltyHome) return slot.awayTeam;
   }
   return null;
-}
-
-// The feed fixture for a fully-decided matchup, in either orientation.
-function findFeedMatch(matches: Match[], home: string | null, away: string | null): Match | null {
-  if (!home || !away) return null;
-  return (
-    matches.find(
-      (m) =>
-        (m.homeTeam === home && m.awayTeam === away) ||
-        (m.homeTeam === away && m.awayTeam === home),
-    ) ?? null
-  );
-}
-
-// A feed fixture that mentions either known team — used only to borrow the
-// kickoff time / channels for a half-resolved tie the feed hasn't fully drawn
-// yet (e.g. its "CAN vs <null>" record lends CAN's R16 slot a date).
-function findPartialFeedMatch(matches: Match[], home: string | null, away: string | null): Match | null {
-  return (
-    matches.find(
-      (m) =>
-        (!!home && (m.homeTeam === home || m.awayTeam === home)) ||
-        (!!away && (m.homeTeam === away || m.awayTeam === away)),
-    ) ?? null
-  );
-}
-
-/**
- * Build the full knockout bracket from the fixtures feed.
- *
- * The Round of 32 is the bracket's leaves, taken straight from the scraped
- * fixtures (`stage === 'ROUND_OF_32'`, in kick-off order). Every later round is
- * *calculated from who wins*: tie `k` of a round is fed by ties `2k` and `2k+1`
- * of the previous round, so a winner advances automatically the moment its match
- * is FINISHED — no waiting for the feed to resolve the next round's teams. Where
- * a calculated matchup has a real fixture in the feed, its score/status/kick-off
- * are attached so live and full-time results show through. This is pure and
- * deterministic, so the tree is correct from match data alone.
- */
-export function buildKnockoutTree(matches: Match[]): TreeRound[] {
-  const r32 = matches
-    .filter((m) => m.stage === 'ROUND_OF_32')
-    .sort((a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime())
-    .map(matchToSlot);
-
-  // Index later-round fixtures by stage for attaching real results to the
-  // calculated ties.
-  const feedByStage = new Map<string, Match[]>();
-  for (const m of matches) {
-    if (m.stage === 'GROUP_STAGE' || m.stage === 'ROUND_OF_32') continue;
-    const list = feedByStage.get(m.stage) ?? [];
-    list.push(m);
-    feedByStage.set(m.stage, list);
-  }
-
-  const rounds: TreeRound[] = [
-    { round: 'ROUND_OF_32', label: ROUND_LABELS.ROUND_OF_32, slots: r32 },
-  ];
-
-  let prev = r32;
-  for (let i = 1; i < ROUNDS.length; i++) {
-    const round = ROUNDS[i];
-    const feed = feedByStage.get(round) ?? [];
-    const slots: BracketSlot[] = [];
-
-    for (let k = 0; k < ROUND_SIZES[round]; k++) {
-      const home = winnerOf(prev[2 * k]);
-      const away = winnerOf(prev[2 * k + 1]);
-
-      // Prefer the real fixture for a fully-decided matchup so its score and
-      // status show; otherwise present the calculated tie, borrowing a kick-off
-      // from a half-drawn fixture when one exists.
-      const attached = findFeedMatch(feed, home, away);
-      if (attached) {
-        slots.push(matchToSlot(attached));
-        continue;
-      }
-
-      const partial = home || away ? findPartialFeedMatch(feed, home, away) : null;
-      slots.push({
-        slotId: `${round}-${k}`,
-        homeTeam: home,
-        awayTeam: away,
-        homeScore: null,
-        awayScore: null,
-        status: 'SCHEDULED',
-        datetime: partial?.datetime ?? null,
-        channels: partial?.channels,
-        minute: null,
-      });
-    }
-
-    rounds.push({ round, label: ROUND_LABELS[round], slots });
-    prev = slots;
-  }
-
-  return rounds;
-}
-
-/**
- * Fill in the unresolved side of knockout fixtures from the calculated bracket,
- * so a fixture the feed only half-knows ("CAN vs <tbd>") shows its derived
- * opponent ("CAN vs BRA") the moment the feeding tie is decided — the same
- * advancement the tree shows, applied to a flat fixtures list. Group-stage and
- * Round-of-32 fixtures, already-complete fixtures, and ties whose opponent isn't
- * decided yet all pass through unchanged.
- */
-export function fillKnockoutOpponents(matches: Match[]): Match[] {
-  const slotsByStage = new Map<string, BracketSlot[]>();
-  for (const round of buildKnockoutTree(matches)) {
-    slotsByStage.set(round.round, round.slots);
-  }
-
-  return matches.map((m) => {
-    if (m.stage === 'GROUP_STAGE' || m.stage === 'ROUND_OF_32') return m;
-    if (m.homeTeam && m.awayTeam) return m; // already a full matchup
-
-    const known = m.homeTeam || m.awayTeam;
-    if (!known) return m; // nothing to anchor the lookup on
-
-    const slot = slotsByStage.get(m.stage)?.find(
-      (s) => s.homeTeam === known || s.awayTeam === known,
-    );
-    const opponent = slot ? (slot.homeTeam === known ? slot.awayTeam : slot.homeTeam) : null;
-    if (!opponent) return m; // feeding tie not decided yet
-
-    return m.homeTeam ? { ...m, awayTeam: opponent } : { ...m, homeTeam: opponent };
-  });
 }

@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Match, BracketSlot, buildKnockoutTree } from '@sweepstake/shared';
+import { Match, BracketSlot, KnockoutFeeder, buildKnockoutTree, tieWinner } from '@sweepstake/shared';
 import Avatar from '@/components/Avatar';
 import LiveBadge from '@/components/LiveBadge';
 import ChannelPills from '@/components/ChannelPills';
-import { formatMatchDate, formatMatchTime, formatPens } from '@/lib/format';
+import { formatMatchDate, formatMatchTime, formatPens, feederLabel } from '@/lib/format';
 import { TeamOwner } from '@/lib/owners';
 
 // useLayoutEffect warns when run during SSR; fall back to useEffect on the
@@ -63,7 +63,26 @@ export default function KnockoutTree({
   teamFlags,
   claimedPerson,
 }: KnockoutTreeProps) {
-  const rounds = buildKnockoutTree(matches);
+  const rounds = useMemo(() => buildKnockoutTree(matches), [matches]);
+  // Which tie feeds which, derived from the data rather than slot position: a
+  // finished tie's winner is traced to whichever next-round slot now holds that
+  // team. The real bracket order isn't recoverable from kick-off time, so a
+  // position-based pairing would draw the wrong lines — this only links ties
+  // that have actually resolved, leaving future ties unconnected until they do.
+  const feederLinks = useMemo(() => {
+    const links: { round: number; from: number; to: number }[] = [];
+    for (let r = 0; r < rounds.length - 1; r++) {
+      rounds[r].slots.forEach((slot, from) => {
+        const winner = tieWinner(slot);
+        if (!winner) return;
+        const to = rounds[r + 1].slots.findIndex(
+          (s) => s.homeTeam === winner || s.awayTeam === winner,
+        );
+        if (to >= 0) links.push({ round: r, from, to });
+      });
+    }
+    return links;
+  }, [rounds]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -101,9 +120,8 @@ export default function KnockoutTree({
 
   // Draw bracket connectors by measuring real card positions, so the lines stay
   // correct however flexbox lays the cards out, whatever a round's match count,
-  // and at any width. Each card (cell n in round r) links to its successor
-  // (cell ⌊n/2⌋ in round r+1) — when that successor exists, keeping partially
-  // scheduled rounds and the successor-less final from drawing dangling lines.
+  // and at any width. The which-feeds-which pairing comes from feederLinks
+  // (traced from results, not slot position), so only resolved ties draw a line.
   useIsomorphicLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -121,21 +139,18 @@ export default function KnockoutTree({
       }
 
       const paths: string[] = [];
-      for (const [round, cells] of byRound) {
-        const next = byRound.get(round + 1);
-        if (!next) continue;
-        for (const [cell, rect] of cells) {
-          const target = next.get(Math.floor(cell / 2));
-          if (!target) continue;
-          paths.push(
-            elbowPath(
-              rect.right - origin.left,
-              rect.top - origin.top + rect.height / 2,
-              target.left - origin.left,
-              target.top - origin.top + target.height / 2,
-            ),
-          );
-        }
+      for (const { round, from, to } of feederLinks) {
+        const fromRect = byRound.get(round)?.get(from);
+        const toRect = byRound.get(round + 1)?.get(to);
+        if (!fromRect || !toRect) continue;
+        paths.push(
+          elbowPath(
+            fromRect.right - origin.left,
+            fromRect.top - origin.top + fromRect.height / 2,
+            toRect.left - origin.left,
+            toRect.top - origin.top + toRect.height / 2,
+          ),
+        );
       }
       setConnectors(paths);
       syncHeader();
@@ -146,7 +161,7 @@ export default function KnockoutTree({
     const observer = new ResizeObserver(compute);
     observer.observe(container);
     return () => observer.disconnect();
-  }, [matches]);
+  }, [feederLinks]);
 
   return (
     <div className="relative">
@@ -248,8 +263,12 @@ function TreeMatch({
         data-cell-index={cellIndex}
         className="bg-white/[0.02] border border-dashed border-white/10 rounded-lg p-2 w-56 text-xs"
       >
-        <div className="flex items-center gap-1 rounded p-1 text-white/30">TBD</div>
-        <div className="flex items-center gap-1 rounded p-1 text-white/30">TBD</div>
+        <div className="flex items-center gap-1 rounded p-1 text-white/30">
+          {feederLabel(slot.homeFeeder) ?? 'TBD'}
+        </div>
+        <div className="flex items-center gap-1 rounded p-1 text-white/30">
+          {feederLabel(slot.awayFeeder) ?? 'TBD'}
+        </div>
       </div>
     );
   }
@@ -297,6 +316,7 @@ function TreeMatch({
       )}
       <TeamRow
         code={slot.homeTeam}
+        feeder={slot.homeFeeder}
         flag={slot.homeTeam ? teamFlags?.[slot.homeTeam] : undefined}
         owner={slot.homeTeam ? teamOwners?.[slot.homeTeam] : undefined}
         score={slot.status === 'SCHEDULED' ? null : slot.homeScore}
@@ -304,6 +324,7 @@ function TreeMatch({
       />
       <TeamRow
         code={slot.awayTeam}
+        feeder={slot.awayFeeder}
         flag={slot.awayTeam ? teamFlags?.[slot.awayTeam] : undefined}
         owner={slot.awayTeam ? teamOwners?.[slot.awayTeam] : undefined}
         score={slot.status === 'SCHEDULED' ? null : slot.awayScore}
@@ -318,21 +339,24 @@ function TreeMatch({
 
 function TeamRow({
   code,
+  feeder,
   flag,
   owner,
   score,
   won,
 }: {
   code: string | null;
+  feeder?: KnockoutFeeder | null;
   flag?: string;
   owner?: TeamOwner;
   score: number | null;
   won: boolean;
 }) {
+  const label = code ?? feederLabel(feeder) ?? 'TBD';
   return (
     <div className={`flex items-center gap-1 rounded p-1 ${won ? 'bg-green-900/40' : ''}`}>
       {flag && <span className="text-base leading-none shrink-0">{flag}</span>}
-      <span className={`font-semibold shrink-0 ${code ? '' : 'text-white/30'}`}>{code ?? 'TBD'}</span>
+      <span className={`font-semibold shrink-0 ${code ? '' : 'text-white/30'}`}>{label}</span>
       {owner && (
         <span className="flex min-w-0 items-center gap-1 text-[10px] text-gold/80">
           <Avatar name={owner.name} size="xs" />

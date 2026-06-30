@@ -1,6 +1,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { parseBbcHtml, buildBbcPatches, fetchBbcFixtures, extractInitialData } from '../../clients/bbcScraper';
+import {
+  parseBbcHtml,
+  buildBbcPatches,
+  fetchBbcFixtures,
+  extractInitialData,
+  parseBbcKnockoutTies,
+  buildBbcKnockoutPatches,
+  ScrapedKnockoutTie,
+} from '../../clients/bbcScraper';
 import { Match, MatchAction } from '@sweepstake/shared';
 
 const FIXTURE_PATH = path.resolve(__dirname, '../fixtures/bbc-sample.html');
@@ -677,5 +685,295 @@ describe('fetchBbcFixtures', () => {
     global.fetch = fetchMock as never;
 
     await expect(fetchBbcFixtures()).rejects.toThrow(/parsed 0 events/);
+  });
+});
+
+describe('parseBbcKnockoutTies', () => {
+  // Build a scores-fixtures page from raw events, mirroring BBC's
+  // double-JSON-encoded window.__INITIAL_DATA__ blob.
+  function makeHtml(events: Record<string, unknown>[]): string {
+    const data = {
+      data: {
+        'sport-data-scores-fixtures?x=1': {
+          data: { eventGroups: [{ secondaryGroups: [{ events }] }] },
+        },
+      },
+    };
+    const outer = JSON.stringify(JSON.stringify(data));
+    return `<html><body><script>window.__INITIAL_DATA__=${outer};</script></body></html>`;
+  }
+
+  // A FINISHED Round-of-32 tie decided on penalties (real shape, NED 1-1 MAR,
+  // Morocco win the shootout 3-2). The on-pitch score and shootout sit in
+  // separate runningScores fields.
+  const shootoutEvent = {
+    home: {
+      fullName: 'Netherlands',
+      score: '1',
+      runningScores: { halftime: '0', fulltime: '1', extratime: '1', penaltyShootout: '2' },
+    },
+    away: {
+      fullName: 'Morocco',
+      score: '1',
+      runningScores: { halftime: '0', fulltime: '1', extratime: '1', penaltyShootout: '3' },
+    },
+    startDateTime: '2026-06-30T01:00:00Z',
+    eventGroupingLabel: 'World - FIFA World Cup - Last 32',
+    status: 'PostEvent',
+    statusComment: { value: 'PENS' },
+    periodLabel: { value: 'PENS' },
+    tipoTopicId: 'c8023x0d3g9t',
+  };
+
+  it('parses a finished shootout tie: stage, on-pitch score, and shootout tally', () => {
+    const [tie] = parseBbcKnockoutTies(makeHtml([shootoutEvent]));
+    expect(tie).toMatchObject({
+      stage: 'ROUND_OF_32',
+      datetime: '2026-06-30T01:00:00Z',
+      homeTeam: 'NED',
+      awayTeam: 'MAR',
+      homeFeeder: null,
+      awayFeeder: null,
+      homeScore: 1, // on-pitch (extratime), NOT folding the shootout in
+      awayScore: 1,
+      penaltyHome: 2,
+      penaltyAway: 3,
+      status: 'FINISHED',
+      tipoTopicId: 'c8023x0d3g9t',
+    });
+  });
+
+  it('parses a resolved upcoming tie with both teams and no shootout', () => {
+    const event = {
+      home: { fullName: 'Canada' },
+      away: { fullName: 'Morocco' },
+      startDateTime: '2026-07-04T17:00:00Z',
+      eventGroupingLabel: 'World - FIFA World Cup - Last 16',
+      status: 'PreEvent',
+      statusComment: { value: 'Scheduled' },
+    };
+    const [tie] = parseBbcKnockoutTies(makeHtml([event]));
+    expect(tie).toMatchObject({
+      stage: 'ROUND_OF_16',
+      homeTeam: 'CAN',
+      awayTeam: 'MAR',
+      homeFeeder: null,
+      awayFeeder: null,
+      homeScore: null,
+      awayScore: null,
+      penaltyHome: null,
+      penaltyAway: null,
+      status: 'SCHEDULED',
+    });
+  });
+
+  it('parses a half-resolved tie: a known team versus a "Winner Match N" feeder', () => {
+    const event = {
+      home: { fullName: 'Paraguay' },
+      away: { fullName: 'Winner Match 77' },
+      startDateTime: '2026-07-04T21:00:00Z',
+      eventGroupingLabel: 'World - FIFA World Cup - Last 16',
+      status: 'PreEvent',
+    };
+    const [tie] = parseBbcKnockoutTies(makeHtml([event]));
+    expect(tie.homeTeam).toBe('PAR');
+    expect(tie.awayTeam).toBeNull();
+    expect(tie.awayFeeder).toEqual({ outcome: 'WINNER', feederRound: 'MATCH', feederNumber: 77 });
+  });
+
+  it('parses quarter-final and semi-final feeder references', () => {
+    const semi = {
+      home: { fullName: 'Winner Quarter-final 1' },
+      away: { fullName: 'Winner Quarter-final 2' },
+      startDateTime: '2026-07-14T19:00:00Z',
+      eventGroupingLabel: 'World - FIFA World Cup - Semi-finals',
+      status: 'PreEvent',
+    };
+    const third = {
+      home: { fullName: 'Loser Semi-final 1' },
+      away: { fullName: 'Loser Semi-final 2' },
+      startDateTime: '2026-07-18T21:00:00Z',
+      eventGroupingLabel: 'World - FIFA World Cup - 3rd Place Final',
+      status: 'PreEvent',
+    };
+    const ties = parseBbcKnockoutTies(makeHtml([semi, third]));
+    expect(ties[0]).toMatchObject({
+      stage: 'SEMI_FINAL',
+      homeFeeder: { outcome: 'WINNER', feederRound: 'QUARTER_FINAL', feederNumber: 1 },
+      awayFeeder: { outcome: 'WINNER', feederRound: 'QUARTER_FINAL', feederNumber: 2 },
+    });
+    expect(ties[1]).toMatchObject({
+      stage: 'THIRD_PLACE',
+      homeFeeder: { outcome: 'LOSER', feederRound: 'SEMI_FINAL', feederNumber: 1 },
+      awayFeeder: { outcome: 'LOSER', feederRound: 'SEMI_FINAL', feederNumber: 2 },
+    });
+  });
+
+  it('maps every BBC round label to a stage and skips group-stage events', () => {
+    const round = (label: string) => ({
+      home: { fullName: 'Winner Match 1' },
+      away: { fullName: 'Winner Match 2' },
+      startDateTime: '2026-07-10T19:00:00Z',
+      eventGroupingLabel: `World - FIFA World Cup - ${label}`,
+      status: 'PreEvent',
+    });
+    const ties = parseBbcKnockoutTies(
+      makeHtml([
+        round('Last 32'),
+        round('Last 16'),
+        round('Quarter-finals'),
+        round('Semi-finals'),
+        round('3rd Place Final'),
+        round('Final'),
+        // Group-stage events carry a group label, not a knockout round — skipped.
+        { ...round('Group A'), home: { fullName: 'Mexico' }, away: { fullName: 'South Africa' } },
+      ]),
+    );
+    expect(ties.map((t) => t.stage)).toEqual([
+      'ROUND_OF_32',
+      'ROUND_OF_16',
+      'QUARTER_FINAL',
+      'SEMI_FINAL',
+      'THIRD_PLACE',
+      'FINAL',
+    ]);
+  });
+
+  it('falls back to the flat score when a tie carries no runningScores', () => {
+    const event = {
+      home: { fullName: 'Brazil', score: '2' },
+      away: { fullName: 'Japan', score: '1' },
+      startDateTime: '2026-06-29T17:00:00Z',
+      eventGroupingLabel: 'World - FIFA World Cup - Last 32',
+      status: 'PostEvent',
+      statusComment: { value: 'FT' },
+    };
+    const [tie] = parseBbcKnockoutTies(makeHtml([event]));
+    expect(tie).toMatchObject({ homeScore: 2, awayScore: 1, penaltyHome: null, penaltyAway: null });
+  });
+
+  it('returns [] for a page with no fixtures data', () => {
+    expect(parseBbcKnockoutTies('<html><body>no data</body></html>')).toEqual([]);
+  });
+});
+
+describe('buildBbcKnockoutPatches', () => {
+  const koMatch = (over: Partial<Match> = {}): Match => ({
+    matchId: 'm-ger-par',
+    homeTeam: 'GER',
+    awayTeam: 'PAR',
+    homeScore: null,
+    awayScore: null,
+    status: 'LIVE',
+    stage: 'ROUND_OF_32',
+    group: null,
+    datetime: '2026-06-29T20:30:00Z',
+    venue: 'TBC',
+    ...over,
+  });
+
+  const koTie = (over: Partial<ScrapedKnockoutTie> = {}): ScrapedKnockoutTie => ({
+    stage: 'ROUND_OF_32',
+    datetime: '2026-06-29T20:30:00Z',
+    homeTeam: 'GER',
+    awayTeam: 'PAR',
+    homeFeeder: null,
+    awayFeeder: null,
+    homeScore: 1,
+    awayScore: 1,
+    penaltyHome: 3,
+    penaltyAway: 4,
+    status: 'FINISHED',
+    minute: null,
+    ...over,
+  });
+
+  it('finalises a shootout tie with the on-pitch score and the shootout tally', () => {
+    const [patch] = buildBbcKnockoutPatches([koTie()], [koMatch()]);
+    expect(patch).toMatchObject({
+      matchId: 'm-ger-par',
+      status: 'FINISHED',
+      homeScore: 1,
+      awayScore: 1,
+      penaltyHome: 3,
+      penaltyAway: 4,
+    });
+  });
+
+  it('finalises a knockout decisive on the pitch (no shootout)', () => {
+    const tie = koTie({ homeScore: 2, awayScore: 0, penaltyHome: null, penaltyAway: null });
+    const [patch] = buildBbcKnockoutPatches([tie], [koMatch()]);
+    expect(patch).toMatchObject({ status: 'FINISHED', homeScore: 2, awayScore: 0 });
+    expect(patch.penaltyHome).toBeNull();
+  });
+
+  it('does NOT finalise a tie still level with no shootout (holds it open)', () => {
+    const tie = koTie({ homeScore: 1, awayScore: 1, penaltyHome: null, penaltyAway: null });
+    const [patch] = buildBbcKnockoutPatches([tie], [koMatch()]);
+    // Feeders are still patched, but the result is left unfinished.
+    expect(patch.status).toBeUndefined();
+    expect(patch.homeScore).toBeUndefined();
+  });
+
+  it('labels an unresolved opponent from the feeder, correlating by the known team', () => {
+    const tie = koTie({
+      stage: 'ROUND_OF_16',
+      datetime: '2026-07-04T21:00:00Z',
+      homeTeam: 'PAR',
+      awayTeam: null,
+      awayFeeder: { outcome: 'WINNER', feederRound: 'MATCH', feederNumber: 77 },
+      homeScore: null,
+      awayScore: null,
+      penaltyHome: null,
+      penaltyAway: null,
+      status: 'SCHEDULED',
+    });
+    const match = koMatch({
+      matchId: 'm-par-r16',
+      homeTeam: 'PAR',
+      awayTeam: '',
+      stage: 'ROUND_OF_16',
+      datetime: '2026-07-04T21:00:00Z',
+      status: 'SCHEDULED',
+    });
+    const [patch] = buildBbcKnockoutPatches([tie], [match]);
+    expect(patch).toMatchObject({
+      matchId: 'm-par-r16',
+      homeFeeder: null,
+      awayFeeder: { outcome: 'WINNER', feederRound: 'MATCH', feederNumber: 77 },
+    });
+    expect(patch.status).toBeUndefined(); // not played yet
+  });
+
+  it('correlates an all-placeholder future tie by round + kickoff', () => {
+    const tie = koTie({
+      stage: 'SEMI_FINAL',
+      datetime: '2026-07-14T19:00:00Z',
+      homeTeam: null,
+      awayTeam: null,
+      homeFeeder: { outcome: 'WINNER', feederRound: 'QUARTER_FINAL', feederNumber: 1 },
+      awayFeeder: { outcome: 'WINNER', feederRound: 'QUARTER_FINAL', feederNumber: 2 },
+      homeScore: null,
+      awayScore: null,
+      penaltyHome: null,
+      penaltyAway: null,
+      status: 'SCHEDULED',
+    });
+    const match = koMatch({
+      matchId: 'm-sf1',
+      homeTeam: '',
+      awayTeam: '',
+      stage: 'SEMI_FINAL',
+      datetime: '2026-07-14T19:00:00Z',
+      status: 'SCHEDULED',
+    });
+    const [patch] = buildBbcKnockoutPatches([tie], [match]);
+    expect(patch.matchId).toBe('m-sf1');
+    expect(patch.homeFeeder).toEqual({ outcome: 'WINNER', feederRound: 'QUARTER_FINAL', feederNumber: 1 });
+  });
+
+  it('skips a tie that matches no stored row', () => {
+    const tie = koTie({ homeTeam: 'ESP', awayTeam: 'ITA' });
+    expect(buildBbcKnockoutPatches([tie], [koMatch()])).toEqual([]);
   });
 });

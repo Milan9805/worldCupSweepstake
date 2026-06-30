@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { Match, Team, ProgressTone, TeamProgress } from '@sweepstake/shared';
 import { TeamMatchInfo } from '@/lib/teamMatches';
-import { formatMatchDate, formatMatchTime, formatPens } from '@/lib/format';
+import { formatMatchDate, formatMatchTime, formatPens, feederLabel } from '@/lib/format';
 import StageLink from '@/components/StageLink';
 import Avatar from '@/components/Avatar';
 import LiveBadge from '@/components/LiveBadge';
@@ -128,8 +128,14 @@ function MatchInfoFooter({
 
   const opponentLabel = (match: Match) => {
     const oppCode = opponentCode(match);
-    const opp = teamsByCode?.[oppCode];
-    return `${opp?.flag ?? ''} ${oppCode}`.trim();
+    if (oppCode) {
+      const opp = teamsByCode?.[oppCode];
+      return `${opp?.flag ?? ''} ${oppCode}`.trim();
+    }
+    // A knockout opponent the draw hasn't resolved yet — show the feeder it
+    // comes from ("Winner Match 77"), or "TBD", never a bare "null".
+    const feeder = match.homeTeam === team.teamCode ? match.awayFeeder : match.homeFeeder;
+    return feederLabel(feeder) ?? 'TBD';
   };
 
   // The group member who owns the opponent in this match, if any.

@@ -69,6 +69,17 @@ export interface MatchAction {
   minute: string; // clock label, verbatim ("9'", "49'")
 }
 
+// The tie a knockout side feeds from, before the draw resolves it to a team —
+// e.g. BBC's "Winner Match 77" / "Loser Semi-final 2". Lets the UI label an
+// unresolved opponent ("Winner of Match 77") instead of a bare "TBD".
+export interface KnockoutFeeder {
+  outcome: 'WINNER' | 'LOSER';
+  // The feeding tie's round: 'MATCH' is a tournament-wide fixture number;
+  // 'QUARTER_FINAL'/'SEMI_FINAL' are numbered within their round.
+  feederRound: 'MATCH' | 'QUARTER_FINAL' | 'SEMI_FINAL';
+  feederNumber: number;
+}
+
 export interface Match {
   matchId: string;
   homeTeam: string; // teamCode
@@ -80,10 +91,16 @@ export interface Match {
   homeScore: number | null;
   awayScore: number | null;
   // Penalty shootout tally, present only on a knockout tie decided on penalties
-  // (null/absent otherwise). Sourced from football-data's score.penalties and
-  // used to resolve the winner when homeScore === awayScore.
+  // (null/absent otherwise). Sourced from BBC's runningScores.penaltyShootout or
+  // football-data's score.penalties, and used to resolve the winner when
+  // homeScore === awayScore.
   penaltyHome?: number | null;
   penaltyAway?: number | null;
+  // The feeding tie for a knockout side the draw hasn't resolved to a team yet
+  // (homeTeam/awayTeam is the empty string in that case). Absent for group-stage
+  // matches and any side already resolved to a team.
+  homeFeeder?: KnockoutFeeder | null;
+  awayFeeder?: KnockoutFeeder | null;
   status: MatchStatus;
   stage: string; // "GROUP_STAGE", "ROUND_OF_32", "ROUND_OF_16", "QUARTER_FINAL", "SEMI_FINAL", "FINAL"
   group: string | null; // group letter for group stage matches

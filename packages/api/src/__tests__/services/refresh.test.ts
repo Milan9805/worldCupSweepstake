@@ -29,9 +29,17 @@ describe('refreshData', () => {
     mockedTv.fetchTvListings.mockResolvedValue([]);
     mockedTv.buildChannelPatches.mockReturnValue([]);
     // Default: the live BBC overlay is a no-op unless a test opts in. (It only
-    // runs at all when a match is in its active window.)
+    // runs at all when a match is in its active window.) refreshData fetches BBC
+    // via fetchBbcData (one page fetch, both views); route its fixtures through
+    // the existing fetchBbcFixtures mock so per-test setups keep working, and
+    // default the knockout view + its patches to empty.
     mockedBbc.fetchBbcFixtures.mockResolvedValue([]);
+    mockedBbc.fetchBbcData.mockImplementation(async () => ({
+      fixtures: await mockedBbc.fetchBbcFixtures(),
+      knockout: [],
+    }));
     mockedBbc.buildBbcPatches.mockReturnValue([]);
+    mockedBbc.buildBbcKnockoutPatches.mockReturnValue([]);
     // Default: the per-match card overlay finds no cards unless a test opts in.
     mockedMatchPage.fetchMatchCards.mockResolvedValue([]);
   });
