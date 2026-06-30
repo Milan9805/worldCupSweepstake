@@ -213,25 +213,42 @@ export function detectEvents(
   const becameFinished =
     existing?.status !== 'FINISHED' && merged.status === 'FINISHED';
   if (becameFinished) {
+    // A knockout tie level on the pitch is decided on penalties, so the outcome
+    // (and the team that advances) comes from the shootout tally, not the 1-1.
+    const pensHome = merged.penaltyHome ?? null;
+    const pensAway = merged.penaltyAway ?? null;
+    const hasPens = pensHome != null && pensAway != null;
     const outcome =
       nextHome > nextAway
         ? 'home'
         : nextAway > nextHome
           ? 'away'
-          : 'draw';
+          : hasPens
+            ? pensHome > pensAway
+              ? 'home'
+              : 'away'
+            : 'draw';
+    const payload: Record<string, unknown> = {
+      homeTeam: merged.homeTeam,
+      awayTeam: merged.awayTeam,
+      homeScore: nextHome,
+      awayScore: nextAway,
+      outcome, // 'home' win | 'away' win | 'draw'
+      stage: merged.stage,
+    };
+    // Surface the shootout result so the feed's Full Time row can state it
+    // ("MAR win 3–2 on pens") instead of reading as a plain draw.
+    if (hasPens) {
+      payload.penaltyHome = pensHome;
+      payload.penaltyAway = pensAway;
+      payload.shootoutWinner = outcome === 'home' ? merged.homeTeam : merged.awayTeam;
+    }
     events.push({
       eventId: `${matchId}#FULL_TIME`,
       ts,
       type: 'FULL_TIME',
       matchId,
-      payload: {
-        homeTeam: merged.homeTeam,
-        awayTeam: merged.awayTeam,
-        homeScore: nextHome,
-        awayScore: nextAway,
-        outcome, // 'home' win | 'away' win | 'draw'
-        stage: merged.stage,
-      },
+      payload,
     });
 
     // ===== ELIMINATION — an involved team is now eliminated =====

@@ -254,6 +254,41 @@ describe('detectEvents', () => {
       const ft = events.find((e) => e.type === 'FULL_TIME');
       expect(ft?.payload.outcome).toBe('draw');
     });
+
+    it('resolves a level knockout tie via the penalty shootout', () => {
+      // 1-1, BRA (away) win 4-3 on pens: outcome is the shootout winner, not a
+      // draw, and the row carries the tally so the feed can state it.
+      const existing = makeMatch({
+        stage: 'ROUND_OF_32', homeScore: 1, awayScore: 1, status: 'LIVE',
+      });
+      const merged = makeMatch({
+        stage: 'ROUND_OF_32', homeScore: 1, awayScore: 1,
+        penaltyHome: 3, penaltyAway: 4, status: 'FINISHED',
+      });
+
+      const events = detectEvents(existing, merged, NO_TEAMS);
+
+      const ft = events.find((e) => e.type === 'FULL_TIME');
+      expect(ft?.payload).toMatchObject({
+        homeScore: 1,
+        awayScore: 1,
+        penaltyHome: 3,
+        penaltyAway: 4,
+        outcome: 'away',
+        shootoutWinner: 'BRA',
+      });
+    });
+
+    it('omits shootout fields on a normal full time', () => {
+      const existing = makeMatch({ homeScore: 2, awayScore: 1, status: 'LIVE' });
+      const merged = makeMatch({ homeScore: 2, awayScore: 1, status: 'FINISHED' });
+
+      const events = detectEvents(existing, merged, NO_TEAMS);
+
+      const ft = events.find((e) => e.type === 'FULL_TIME');
+      expect(ft?.payload.shootoutWinner).toBeUndefined();
+      expect(ft?.payload.penaltyHome).toBeUndefined();
+    });
   });
 
   describe('ELIMINATION', () => {
