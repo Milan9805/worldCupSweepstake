@@ -1,8 +1,15 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { getGroup, getTeams, getMatches, refreshScores } from '@/lib/api';
-import { Group, Team, Match, RefreshResponse, hasActiveMatchWindow } from '@sweepstake/shared';
+import {
+  Group,
+  Team,
+  Match,
+  RefreshResponse,
+  hasActiveMatchWindow,
+  resolveKnockoutMatchups,
+} from '@sweepstake/shared';
 import { usePollScores } from '@/hooks/usePollScores';
 import {
   GroupRegistry,
@@ -231,11 +238,20 @@ export function useGroupState() {
   const activeGroupKey = registry.active;
   const claimedPerson = (activeGroupKey && registry.groups[activeGroupKey]?.person) || null;
 
+  // Expose the matches with knockout next-round opponents filled in from the
+  // winners that have advanced (decided on the pitch or on penalties), so the
+  // banner, fixtures list and tree all read a consistent matchup the moment a
+  // tie ends — never waiting on the once-a-day API to re-list it. Resolution is
+  // derived from the same buildKnockoutTree the tree renders, so they can't
+  // disagree. Internal logic above (poll loop) keeps using the raw `matches`
+  // state; only the exposed value is resolved.
+  const resolvedMatches = useMemo(() => resolveKnockoutMatchups(matches), [matches]);
+
   return {
     groupKey,
     group,
     teams,
-    matches,
+    matches: resolvedMatches,
     loading,
     error,
     login,

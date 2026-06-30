@@ -4,6 +4,7 @@ import {
   isGroupStageComplete,
   buildKnockoutTree,
   tieWinner,
+  resolveKnockoutMatchups,
   ROUND_SIZES,
 } from '../bracket';
 import { Team, Match } from '../types';
@@ -371,6 +372,95 @@ describe('buildKnockoutTree', () => {
     // placeholder (the feed adds nothing the skeleton doesn't already show).
     expect(r16.some((s) => s.slotId === 'ph')).toBe(false);
   });
+
+  // Winner advancement: the moment a tie is decided, its winner should fill the
+  // next round's slot itself — not wait on a slow source to re-list the matchup.
+  describe('advances winners into the next round', () => {
+    it('advances an on-pitch winner into the correct R16 slot, clearing its feeder', () => {
+      // CIV/NOR anchor to R32 slot 9 → their R16 tie is slot 9 >> 1 = 4, away side
+      // (slot 9 is odd). NOR win 1–2 on the pitch.
+      const matches = [
+        makeMatch({ matchId: 'civ-nor', homeTeam: 'CIV', awayTeam: 'NOR', homeScore: 1, awayScore: 2, status: 'FINISHED', datetime: '2026-06-30T18:00:00Z' }),
+      ];
+      const r16 = buildKnockoutTree(matches).find((r) => r.round === 'ROUND_OF_16')!.slots;
+      expect(r16[4].awayTeam).toBe('NOR');
+      expect(r16[4].awayFeeder).toBeNull();
+      // The home side is still undecided, so it keeps its structural feeder.
+      expect(r16[4].homeTeam).toBeNull();
+    });
+
+    it('advances the shootout winner when a tie is level on the pitch', () => {
+      // GER/PAR anchor to R32 slot 0 → R16 slot 0, home side. Level 1–1, PAR win on pens.
+      const matches = [
+        makeMatch({ matchId: 'ger-par', homeTeam: 'GER', awayTeam: 'PAR', homeScore: 1, awayScore: 1, penaltyHome: 3, penaltyAway: 4, status: 'FINISHED', datetime: '2026-06-29T20:30:00Z' }),
+      ];
+      const r16 = buildKnockoutTree(matches).find((r) => r.round === 'ROUND_OF_16')!.slots;
+      expect(r16[0].homeTeam).toBe('PAR');
+      expect(r16[0].homeFeeder).toBeNull();
+    });
+
+    it('fills both sides when both feeding ties are decided', () => {
+      // R16 slot 4 is fed by R32 slot 8 (home, BRA/JPN) and slot 9 (away, CIV/NOR).
+      const matches = [
+        makeMatch({ matchId: 'bra-jpn', homeTeam: 'BRA', awayTeam: 'JPN', homeScore: 2, awayScore: 1, status: 'FINISHED', datetime: '2026-06-29T18:00:00Z' }),
+        makeMatch({ matchId: 'civ-nor', homeTeam: 'CIV', awayTeam: 'NOR', homeScore: 1, awayScore: 2, status: 'FINISHED', datetime: '2026-06-30T18:00:00Z' }),
+      ];
+      const r16 = buildKnockoutTree(matches).find((r) => r.round === 'ROUND_OF_16')!.slots;
+      expect([r16[4].homeTeam, r16[4].awayTeam]).toEqual(['BRA', 'NOR']);
+    });
+
+    it('fills the missing opponent of an already-placed next-round tie (the reported bug)', () => {
+      // BRA is already placed into the R16 tie (home), but its opponent is still the
+      // "Winner Match 78" feeder because the feed hasn't resolved it yet. CIV/NOR has
+      // finished (NOR through), so NOR should drop straight into the away side.
+      const matches = [
+        makeMatch({ matchId: 'civ-nor', homeTeam: 'CIV', awayTeam: 'NOR', homeScore: 1, awayScore: 2, status: 'FINISHED', datetime: '2026-06-30T18:00:00Z' }),
+        makeMatch({ matchId: 'r16-bra', stage: 'ROUND_OF_16', homeTeam: 'BRA', awayTeam: '', awayFeeder: { outcome: 'WINNER', feederRound: 'MATCH', feederNumber: 78 }, status: 'SCHEDULED', datetime: '2026-07-05T21:00:00Z' }),
+      ];
+      const slot = buildKnockoutTree(matches).find((r) => r.round === 'ROUND_OF_16')!.slots[4];
+      expect(slot.slotId).toBe('r16-bra');
+      expect([slot.homeTeam, slot.awayTeam]).toEqual(['BRA', 'NOR']);
+      expect(slot.awayFeeder).toBeNull();
+    });
+
+    it('never overrides a team the feed has already placed', () => {
+      // Feed says the R16 tie is BRA v JPN; a (contradictory) finished CIV/NOR feeding
+      // it must not clobber the placed away team.
+      const matches = [
+        makeMatch({ matchId: 'civ-nor', homeTeam: 'CIV', awayTeam: 'NOR', homeScore: 1, awayScore: 2, status: 'FINISHED', datetime: '2026-06-30T18:00:00Z' }),
+        makeMatch({ matchId: 'r16', stage: 'ROUND_OF_16', homeTeam: 'BRA', awayTeam: 'JPN', status: 'SCHEDULED', datetime: '2026-07-05T21:00:00Z' }),
+      ];
+      const slot = buildKnockoutTree(matches).find((r) => r.round === 'ROUND_OF_16')!.slots[4];
+      expect([slot.homeTeam, slot.awayTeam]).toEqual(['BRA', 'JPN']);
+    });
+
+    it('leaves the side null when the feeding tie is not decided', () => {
+      // Level on the pitch with no shootout tally → not decided → no advancement.
+      const matches = [
+        makeMatch({ matchId: 'civ-nor', homeTeam: 'CIV', awayTeam: 'NOR', homeScore: 1, awayScore: 1, status: 'FINISHED', datetime: '2026-06-30T18:00:00Z' }),
+        makeMatch({ matchId: 'live', homeTeam: 'BRA', awayTeam: 'JPN', homeScore: 2, awayScore: 1, status: 'LIVE', datetime: '2026-06-29T18:00:00Z' }),
+      ];
+      const r16 = buildKnockoutTree(matches).find((r) => r.round === 'ROUND_OF_16')!.slots;
+      expect(r16[4].homeTeam).toBeNull(); // BRA tie still LIVE
+      expect(r16[4].awayTeam).toBeNull(); // CIV/NOR level, no shootout
+      // Structural feeder labels survive on an undecided slot.
+      expect(r16[4].awayFeeder).toEqual({ outcome: 'WINNER', feederRound: 'MATCH', feederNumber: 78 });
+    });
+
+    it('does not leak a derived (unplayed) team past the live frontier', () => {
+      // R32 results derive R16 teams, but those R16 ties are unplayed — so the QF
+      // slot they feed must stay a structural placeholder, not inherit a winner.
+      const matches = [
+        makeMatch({ matchId: 'bra-jpn', homeTeam: 'BRA', awayTeam: 'JPN', homeScore: 2, awayScore: 1, status: 'FINISHED', datetime: '2026-06-29T18:00:00Z' }),
+        makeMatch({ matchId: 'civ-nor', homeTeam: 'CIV', awayTeam: 'NOR', homeScore: 1, awayScore: 2, status: 'FINISHED', datetime: '2026-06-30T18:00:00Z' }),
+      ];
+      const tree = buildKnockoutTree(matches);
+      // BRA anchors R32 slot 8 → R16 slot 4 → QF slot 8 >> 2 = 2.
+      const qf = tree.find((r) => r.round === 'QUARTER_FINAL')!.slots;
+      expect(qf[2].homeTeam).toBeNull();
+      expect(qf[2].awayTeam).toBeNull();
+    });
+  });
 });
 
 describe('tieWinner', () => {
@@ -393,5 +483,63 @@ describe('tieWinner', () => {
     expect(tieWinner(slot({ homeScore: 1, awayScore: 1 }))).toBeNull();
     expect(tieWinner(slot({ status: 'LIVE', homeScore: 2, awayScore: 1 }))).toBeNull();
     expect(tieWinner(slot({ homeScore: null, awayScore: null }))).toBeNull();
+  });
+});
+
+describe('resolveKnockoutMatchups', () => {
+  function makeMatch(overrides: Partial<Match> = {}): Match {
+    return {
+      matchId: 'm',
+      homeTeam: 'AAA',
+      awayTeam: 'BBB',
+      homeScore: null,
+      awayScore: null,
+      status: 'SCHEDULED',
+      stage: 'ROUND_OF_32',
+      group: null,
+      datetime: '2026-06-28T19:00:00Z',
+      venue: 'Stadium',
+      ...overrides,
+    };
+  }
+
+  // BRA's R16 tie (BRA placed home, opponent still "Winner Match 78") with the
+  // feeding CIV/NOR R32 tie finished — the bug: the list shows "BRA vs (blank)".
+  const r16Bra = (over: Partial<Match> = {}) =>
+    makeMatch({ matchId: 'r16-bra', stage: 'ROUND_OF_16', homeTeam: 'BRA', awayTeam: '', awayFeeder: { outcome: 'WINNER', feederRound: 'MATCH', feederNumber: 78 }, status: 'SCHEDULED', datetime: '2026-07-05T21:00:00Z', ...over });
+
+  it('fills an unresolved opponent with the team that advanced on the pitch', () => {
+    const resolved = resolveKnockoutMatchups([
+      makeMatch({ matchId: 'civ-nor', homeTeam: 'CIV', awayTeam: 'NOR', homeScore: 1, awayScore: 2, status: 'FINISHED', datetime: '2026-06-30T18:00:00Z' }),
+      r16Bra(),
+    ]);
+    const r16 = resolved.find((m) => m.matchId === 'r16-bra')!;
+    expect([r16.homeTeam, r16.awayTeam]).toEqual(['BRA', 'NOR']);
+  });
+
+  it('fills an unresolved opponent with the penalty-shootout winner', () => {
+    const resolved = resolveKnockoutMatchups([
+      makeMatch({ matchId: 'civ-nor', homeTeam: 'CIV', awayTeam: 'NOR', homeScore: 1, awayScore: 1, penaltyHome: 2, penaltyAway: 4, status: 'FINISHED', datetime: '2026-06-30T18:00:00Z' }),
+      r16Bra(),
+    ]);
+    const r16 = resolved.find((m) => m.matchId === 'r16-bra')!;
+    expect(r16.awayTeam).toBe('NOR'); // NOR won 4–2 on pens
+  });
+
+  it('leaves the opponent unresolved (and the object untouched) when the feeder is undecided', () => {
+    const fixture = r16Bra();
+    const resolved = resolveKnockoutMatchups([
+      makeMatch({ matchId: 'civ-nor', homeTeam: 'CIV', awayTeam: 'NOR', homeScore: 1, awayScore: 1, status: 'FINISHED', datetime: '2026-06-30T18:00:00Z' }), // level, no shootout
+      fixture,
+    ]);
+    const r16 = resolved.find((m) => m.matchId === 'r16-bra')!;
+    expect(r16.awayTeam).toBe('');
+    expect(r16).toBe(fixture); // unchanged → same reference (memo-friendly)
+  });
+
+  it('passes group-stage matches through untouched', () => {
+    const groupGame = makeMatch({ matchId: 'g1', stage: 'GROUP_STAGE', group: 'A', homeTeam: 'ENG', awayTeam: 'USA' });
+    const resolved = resolveKnockoutMatchups([groupGame]);
+    expect(resolved[0]).toBe(groupGame);
   });
 });

@@ -242,7 +242,10 @@ function placedSlot(match: Match, roundIndex: number, slotIndex: number): Bracke
  * happen for real data) falls back into the next free slot rather than vanishing.
  */
 export function buildKnockoutTree(matches: Match[]): TreeRound[] {
-  return ROUNDS.map((round, roundIndex) => {
+  // Build rounds in order, biggest to smallest, accumulating into `rounds` so each
+  // round can read the one below it to advance its winners (see the fill step).
+  const rounds: TreeRound[] = [];
+  ROUNDS.forEach((round, roundIndex) => {
     const size = ROUND_SIZES[round];
     const placed: (BracketSlot | null)[] = new Array(size).fill(null);
     const overflow: Match[] = [];
@@ -285,8 +288,35 @@ export function buildKnockoutTree(matches: Match[]): TreeRound[] {
         slots.push(skeletonSlot(round, roundIndex, i));
       }
     }
-    return { round, label: ROUND_LABELS[round], slots };
+
+    // Advance the winner of each feeding tie into any side the feed hasn't already
+    // resolved, so the bracket fills the moment a tie is decided — on the pitch OR
+    // on penalties — instead of waiting on a slow source to re-list the matchup. A
+    // slot in round R is fed by slots 2i (home) and 2i+1 (away) of round R-1, the
+    // same fold the structural feeders and connectors use. tieWinner() returns the
+    // team that went through, or null when the tie isn't decided yet — so the fill
+    // stops cleanly at the live frontier (a derived team sits on an unscored slot,
+    // whose tieWinner is null, so it never leaks into the round above it) and never
+    // overrides a team the feed already placed.
+    if (roundIndex > 0) {
+      const below = rounds[roundIndex - 1].slots;
+      slots.forEach((slot, i) => {
+        const home = tieWinner(below[2 * i]);
+        const away = tieWinner(below[2 * i + 1]);
+        if (!slot.homeTeam && home) {
+          slot.homeTeam = home;
+          slot.homeFeeder = null;
+        }
+        if (!slot.awayTeam && away) {
+          slot.awayTeam = away;
+          slot.awayFeeder = null;
+        }
+      });
+    }
+
+    rounds.push({ round, label: ROUND_LABELS[round], slots });
   });
+  return rounds;
 }
 
 /**
@@ -304,4 +334,34 @@ export function tieWinner(slot: BracketSlot): string | null {
     if (slot.penaltyAway > slot.penaltyHome) return slot.awayTeam;
   }
   return null;
+}
+
+/**
+ * Project the bracket's resolved matchups back onto the match list: fill each
+ * knockout fixture's still-unresolved side with the team that has advanced into
+ * it. The advancement comes from buildKnockoutTree — the single source of truth
+ * that folds each winner (on the pitch OR on penalties) onto the fixed bracket —
+ * so the fixtures list and the match banner show "BRA vs NOR" the moment NOR's
+ * tie is decided, instead of a blank opponent, without waiting on a slow source
+ * to re-list the matchup.
+ *
+ * Group-stage and already-resolved fixtures pass through untouched (the same
+ * object reference, so downstream memoisation isn't disturbed); a side whose
+ * feeding tie isn't decided yet is left as-is. Correlated by matchId — a
+ * placed slot's slotId is its fixture's matchId — so a fixture is only ever
+ * filled from its own bracket position, never paired with an arbitrary team.
+ */
+export function resolveKnockoutMatchups(matches: Match[]): Match[] {
+  const bySlotId = new Map<string, BracketSlot>();
+  for (const round of buildKnockoutTree(matches)) {
+    for (const slot of round.slots) bySlotId.set(slot.slotId, slot);
+  }
+  return matches.map((m) => {
+    const slot = bySlotId.get(m.matchId);
+    if (!slot) return m;
+    const homeTeam = m.homeTeam || slot.homeTeam || '';
+    const awayTeam = m.awayTeam || slot.awayTeam || '';
+    if (homeTeam === m.homeTeam && awayTeam === m.awayTeam) return m;
+    return { ...m, homeTeam, awayTeam };
+  });
 }

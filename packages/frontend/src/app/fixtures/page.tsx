@@ -66,9 +66,10 @@ export default function FixturesPage() {
   // identity is stable for the `visible` memo below (which depends on it).
   const ownersByTeam = useMemo(() => buildOwnersByTeam(group?.members ?? []), [group?.members]);
 
-  // The scraped fixtures already carry each knockout tie's real matchup (and a
-  // feeder for any side the draw hasn't filled yet), so the list reads straight
-  // from them — no bracket recomputation that could disagree with the tree.
+  // useGroup already resolves each knockout tie's matchup — filling an unresolved
+  // side with the winner that has advanced into it (see resolveKnockoutMatchups),
+  // derived from the same bracket the tree renders — so the list shows the live
+  // matchup without waiting on the once-a-day API, and can't disagree with the tree.
   const resolvedMatches = matches;
 
   // Only offer the teams that actually appear in a fixture, alphabetised, so the

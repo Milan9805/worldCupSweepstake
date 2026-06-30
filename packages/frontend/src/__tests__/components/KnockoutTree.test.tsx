@@ -122,15 +122,18 @@ describe('KnockoutTree', () => {
     expect(within(r16).getByText('MAR')).toBeInTheDocument();
   });
 
-  it('does not invent a next-round tie when the feed has no fixture for it', () => {
-    // A finished R32 tie with no R16 fixture yet: the winner is NOT computed into
-    // the next round (the old positional pairing did, and paired wrongly).
+  it('advances a finished tie\'s winner into its next-round slot even with no R16 fixture yet', () => {
+    // CAN win their R32 tie. With no R16 fixture from the feed, the winner still
+    // drops into its fixed next-round slot (CAN → R16 slot 1, home side) the moment
+    // the tie is decided — not waiting on the API to re-list the matchup. The
+    // opponent stays an unresolved feeder: we advance a winner onto its own bracket
+    // position, never invent a full pairing.
     const matches = [
       makeMatch({ matchId: 'm1', homeTeam: 'RSA', awayTeam: 'CAN', homeScore: 0, awayScore: 1, status: 'FINISHED', datetime: '2026-06-28T19:00:00Z' }),
     ];
     render(<KnockoutTree matches={matches} />);
     const r16 = screen.getByTestId('round-column-ROUND_OF_16');
-    expect(within(r16).queryByText('CAN')).not.toBeInTheDocument();
+    expect(within(r16).getByText('CAN')).toBeInTheDocument();
   });
 
   it('labels an unresolved opponent from its feeder instead of blank', () => {
