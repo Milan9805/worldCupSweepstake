@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { Match, Team, ProgressTone, TeamProgress } from '@sweepstake/shared';
 import { TeamMatchInfo } from '@/lib/teamMatches';
-import { formatMatchDate, formatMatchTime } from '@/lib/format';
+import { formatMatchDate, formatMatchTime, formatPens } from '@/lib/format';
 import StageLink from '@/components/StageLink';
 import Avatar from '@/components/Avatar';
 import LiveBadge from '@/components/LiveBadge';
@@ -157,6 +157,7 @@ function MatchInfoFooter({
                 {previous.homeTeam} {previous.homeScore} - {previous.awayScore}{' '}
                 {previous.awayTeam}
               </span>
+              <PensTag match={previous} />
               <ResultTag team={team} match={previous} />
               <OwnerTag owner={opponentOwner(previous)} />
               <StageLink match={previous} className="text-[10px] text-white/50 shrink-0 hover:text-white/70" />
@@ -187,7 +188,19 @@ function ResultTag({ team, match }: { team: Team; match: Match }) {
   const isHome = match.homeTeam === team.teamCode;
   const teamScore = isHome ? match.homeScore : match.awayScore;
   const oppScore = isHome ? match.awayScore : match.homeScore;
-  const outcome = teamScore > oppScore ? 'W' : teamScore < oppScore ? 'L' : 'D';
+
+  // A knockout tie level on the pitch is settled by the shootout, so fold the
+  // penalty tally into the result — otherwise a penalty win/loss reads as a draw.
+  const teamPens = isHome ? match.penaltyHome : match.penaltyAway;
+  const oppPens = isHome ? match.penaltyAway : match.penaltyHome;
+  const levelOnPens = teamScore === oppScore && teamPens != null && oppPens != null;
+
+  const outcome =
+    teamScore > oppScore || (levelOnPens && teamPens! > oppPens!)
+      ? 'W'
+      : teamScore < oppScore || (levelOnPens && teamPens! < oppPens!)
+      ? 'L'
+      : 'D';
   const colour =
     outcome === 'W'
       ? 'bg-green-700/60 text-green-200'
@@ -197,4 +210,12 @@ function ResultTag({ team, match }: { team: Team; match: Match }) {
   return (
     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${colour}`}>{outcome}</span>
   );
+}
+
+// The shootout tally for a knockout tie decided on penalties, shown next to the
+// level scoreline (e.g. "pens 3–4"); renders nothing for a match without one.
+function PensTag({ match }: { match: Match }) {
+  const pens = formatPens(match.penaltyHome, match.penaltyAway);
+  if (!pens) return null;
+  return <span className="text-white/50 text-[11px] shrink-0">{pens}</span>;
 }

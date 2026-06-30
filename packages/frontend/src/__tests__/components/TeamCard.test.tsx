@@ -231,6 +231,53 @@ describe('TeamCard', () => {
       expect(screen.getByText('L')).toBeInTheDocument();
     });
 
+    it('shows a W tag (not D) when the team won a level tie on penalties', () => {
+      // ENG 1-1 BRA, ENG win the shootout 4-3 — a win, not a draw.
+      const previous = makeMatch({
+        stage: 'ROUND_OF_32',
+        status: 'FINISHED',
+        homeScore: 1,
+        awayScore: 1,
+        penaltyHome: 4,
+        penaltyAway: 3,
+      });
+      render(
+        <TeamCard team={makeTeam()} matchInfo={{ live: null, next: null, previous }} />
+      );
+      expect(screen.getByText('W')).toBeInTheDocument();
+      expect(screen.queryByText('D')).not.toBeInTheDocument();
+      // ...and the shootout tally is surfaced next to the level scoreline.
+      expect(screen.getByText('pens 4–3')).toBeInTheDocument();
+    });
+
+    it('shows an L tag (not D) when the team lost a level tie on penalties', () => {
+      // ENG (away) 1-1 BRA, BRA win the shootout 4-3 — a loss for ENG.
+      const previous = makeMatch({
+        homeTeam: 'BRA',
+        awayTeam: 'ENG',
+        stage: 'ROUND_OF_32',
+        status: 'FINISHED',
+        homeScore: 1,
+        awayScore: 1,
+        penaltyHome: 4,
+        penaltyAway: 3,
+      });
+      render(
+        <TeamCard team={makeTeam()} matchInfo={{ live: null, next: null, previous }} />
+      );
+      expect(screen.getByText('L')).toBeInTheDocument();
+      expect(screen.queryByText('D')).not.toBeInTheDocument();
+    });
+
+    it('still shows a D tag for a genuine draw with no shootout', () => {
+      const previous = makeMatch({ status: 'FINISHED', homeScore: 1, awayScore: 1 });
+      render(
+        <TeamCard team={makeTeam()} matchInfo={{ live: null, next: null, previous }} />
+      );
+      expect(screen.getByText('D')).toBeInTheDocument();
+      expect(screen.queryByText(/pens/)).not.toBeInTheDocument();
+    });
+
     it('shows the opponent owner on the next fixture when owned', () => {
       const next = makeMatch({ awayTeam: 'BRA', status: 'SCHEDULED' });
       render(
