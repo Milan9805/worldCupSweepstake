@@ -252,7 +252,18 @@ describe('buildKnockoutTree', () => {
     expect(r16Slot0.awayTeam).toBeNull(); // BRA-JPN undecided → no winner yet
   });
 
-  it('does not resolve a winner from a level (penalties) score', () => {
+  it('advances the penalty shootout winner from a level score', () => {
+    const matches = [
+      makeMatch({
+        matchId: 'm1', homeTeam: 'RSA', awayTeam: 'CAN',
+        homeScore: 1, awayScore: 1, penaltyHome: 3, penaltyAway: 4, status: 'FINISHED',
+      }),
+    ];
+    const r16Slot0 = buildKnockoutTree(matches).find((r) => r.round === 'ROUND_OF_16')!.slots[0];
+    expect(r16Slot0.homeTeam).toBe('CAN'); // CAN won the shootout 4–3
+  });
+
+  it('does not resolve a winner from a level score with no shootout tally', () => {
     const matches = [
       makeMatch({ matchId: 'm1', homeTeam: 'RSA', awayTeam: 'CAN', homeScore: 1, awayScore: 1, status: 'FINISHED' }),
     ];

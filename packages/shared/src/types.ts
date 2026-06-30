@@ -73,8 +73,17 @@ export interface Match {
   matchId: string;
   homeTeam: string; // teamCode
   awayTeam: string; // teamCode
+  // The on-pitch score (regulation + extra time), EXCLUDING any penalty
+  // shootout — so a tie that goes to pens reads its real scoreline (e.g. 1-1)
+  // and shootout kicks never inflate the goal tally. The shootout tally lives
+  // separately in penaltyHome/penaltyAway.
   homeScore: number | null;
   awayScore: number | null;
+  // Penalty shootout tally, present only on a knockout tie decided on penalties
+  // (null/absent otherwise). Sourced from football-data's score.penalties and
+  // used to resolve the winner when homeScore === awayScore.
+  penaltyHome?: number | null;
+  penaltyAway?: number | null;
   status: MatchStatus;
   stage: string; // "GROUP_STAGE", "ROUND_OF_32", "ROUND_OF_16", "QUARTER_FINAL", "SEMI_FINAL", "FINAL"
   group: string | null; // group letter for group stage matches

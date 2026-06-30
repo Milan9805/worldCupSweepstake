@@ -151,6 +151,10 @@ export interface BracketSlot {
   awayTeam: string | null;
   homeScore: number | null;
   awayScore: number | null;
+  // Penalty shootout tally for a tie decided on pens (null otherwise); breaks a
+  // level score in winnerOf and drives the "pens H–A" line in the bracket.
+  penaltyHome?: number | null;
+  penaltyAway?: number | null;
   status: MatchStatus;
   datetime: string | null;
   channels?: ChannelBroadcast[];
@@ -170,6 +174,8 @@ function matchToSlot(m: Match): BracketSlot {
     awayTeam: m.awayTeam || null,
     homeScore: m.homeScore,
     awayScore: m.awayScore,
+    penaltyHome: m.penaltyHome ?? null,
+    penaltyAway: m.penaltyAway ?? null,
     status: m.status,
     datetime: m.datetime,
     channels: m.channels,
@@ -178,12 +184,18 @@ function matchToSlot(m: Match): BracketSlot {
 }
 
 // The team that advances from a tie, or null when it isn't decided yet (not
-// finished, or a level score that went to penalties our data can't resolve).
+// finished, or a level score with no penalty result to break it). A tie level
+// after extra time is resolved by the penalty shootout tally.
 function winnerOf(slot: BracketSlot | undefined): string | null {
   if (!slot || slot.status !== 'FINISHED') return null;
   if (slot.homeScore == null || slot.awayScore == null) return null;
   if (slot.homeScore > slot.awayScore) return slot.homeTeam;
   if (slot.awayScore > slot.homeScore) return slot.awayTeam;
+  // Level on the pitch — decided on penalties when we have the shootout tally.
+  if (slot.penaltyHome != null && slot.penaltyAway != null) {
+    if (slot.penaltyHome > slot.penaltyAway) return slot.homeTeam;
+    if (slot.penaltyAway > slot.penaltyHome) return slot.awayTeam;
+  }
   return null;
 }
 
