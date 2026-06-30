@@ -228,31 +228,39 @@ describe('buildKnockoutTree', () => {
     expect(rounds.find((r) => r.round === 'FINAL')!.slots).toHaveLength(1);
   });
 
-  it('takes each round straight from the feed fixtures, in kick-off order', () => {
+  it('places each tie at its fixed bracket slot, regardless of kick-off order', () => {
+    // PAR sits in R32 slot 0 → its R16 tie is slot 0; CAN sits in R32 slot 2 → its
+    // R16 tie is slot 1. So the later kick-off (PAR, 21:00) comes FIRST — the
+    // bracket position, not the clock, fixes the order.
     const matches = [
-      makeMatch({ matchId: 'late', stage: 'ROUND_OF_16', homeTeam: 'PAR', awayTeam: 'URU', datetime: '2026-07-04T21:00:00Z' }),
-      makeMatch({ matchId: 'early', stage: 'ROUND_OF_16', homeTeam: 'CAN', awayTeam: 'MAR', datetime: '2026-07-04T17:00:00Z' }),
+      makeMatch({ matchId: 'par', stage: 'ROUND_OF_16', homeTeam: 'PAR', awayTeam: 'URU', datetime: '2026-07-04T21:00:00Z' }),
+      makeMatch({ matchId: 'canmar', stage: 'ROUND_OF_16', homeTeam: 'CAN', awayTeam: 'MAR', datetime: '2026-07-04T17:00:00Z' }),
     ];
     const r16 = buildKnockoutTree(matches).find((r) => r.round === 'ROUND_OF_16')!.slots;
-    expect(r16[0].slotId).toBe('early'); // 17:00 before 21:00
-    expect([r16[0].homeTeam, r16[0].awayTeam]).toEqual(['CAN', 'MAR']);
-    expect([r16[1].homeTeam, r16[1].awayTeam]).toEqual(['PAR', 'URU']);
+    expect(r16[0].slotId).toBe('par');
+    expect([r16[0].homeTeam, r16[0].awayTeam]).toEqual(['PAR', 'URU']);
+    expect(r16[1].slotId).toBe('canmar');
+    expect([r16[1].homeTeam, r16[1].awayTeam]).toEqual(['CAN', 'MAR']);
   });
 
-  it('uses the feed matchup verbatim — never a positional pairing of R32 winners', () => {
-    // Regression: GER-PAR and NED-MAR finish, but their winners are NOT bracket-
-    // adjacent. The feed says CAN v MAR and PAR v <tbd>; the tree must show those,
-    // not pair PAR with MAR by kick-off position.
+  it('uses the feed matchup verbatim — never invents an opponent', () => {
+    // Regression: GER-PAR and NED-MAR finish, but the feed says CAN v MAR and
+    // PAR v <tbd>. The tree shows those exact matchups at their fixed slots —
+    // never pairing PAR with MAR (their R32 ties aren't bracket-adjacent).
     const matches = [
       makeMatch({ matchId: 'r32a', homeTeam: 'GER', awayTeam: 'PAR', homeScore: 1, awayScore: 1, penaltyHome: 3, penaltyAway: 4, status: 'FINISHED', datetime: '2026-06-29T20:30:00Z' }),
       makeMatch({ matchId: 'r32b', homeTeam: 'NED', awayTeam: 'MAR', homeScore: 1, awayScore: 1, penaltyHome: 2, penaltyAway: 3, status: 'FINISHED', datetime: '2026-06-30T01:00:00Z' }),
-      makeMatch({ matchId: 'r16a', stage: 'ROUND_OF_16', homeTeam: 'CAN', awayTeam: 'MAR', status: 'SCHEDULED', datetime: '2026-07-04T17:00:00Z' }),
-      makeMatch({ matchId: 'r16b', stage: 'ROUND_OF_16', homeTeam: 'PAR', awayTeam: '', awayFeeder: { outcome: 'WINNER', feederRound: 'MATCH', feederNumber: 77 }, status: 'SCHEDULED', datetime: '2026-07-04T21:00:00Z' }),
+      makeMatch({ matchId: 'r16-canmar', stage: 'ROUND_OF_16', homeTeam: 'CAN', awayTeam: 'MAR', status: 'SCHEDULED', datetime: '2026-07-04T17:00:00Z' }),
+      makeMatch({ matchId: 'r16-par', stage: 'ROUND_OF_16', homeTeam: 'PAR', awayTeam: '', awayFeeder: { outcome: 'WINNER', feederRound: 'MATCH', feederNumber: 77 }, status: 'SCHEDULED', datetime: '2026-07-04T21:00:00Z' }),
     ];
     const r16 = buildKnockoutTree(matches).find((r) => r.round === 'ROUND_OF_16')!.slots;
-    expect([r16[0].homeTeam, r16[0].awayTeam]).toEqual(['CAN', 'MAR']);
-    expect(r16[1].homeTeam).toBe('PAR');
-    expect(r16[1].awayTeam).toBeNull(); // genuinely undecided — NOT "MAR"
+    // PAR (R32 slot 0) → R16 slot 0; its opponent is genuinely undecided.
+    expect(r16[0].slotId).toBe('r16-par');
+    expect(r16[0].homeTeam).toBe('PAR');
+    expect(r16[0].awayTeam).toBeNull(); // NOT "MAR"
+    // CAN (R32 slot 2) → R16 slot 1.
+    expect(r16[1].slotId).toBe('r16-canmar');
+    expect([r16[1].homeTeam, r16[1].awayTeam]).toEqual(['CAN', 'MAR']);
   });
 
   it('carries a finished tie\'s score and shootout tally onto its slot', () => {
@@ -277,6 +285,91 @@ describe('buildKnockoutTree', () => {
     const slots = buildKnockoutTree([]).find((r) => r.round === 'QUARTER_FINAL')!.slots;
     expect(slots).toHaveLength(ROUND_SIZES.QUARTER_FINAL);
     expect(slots.every((s) => s.homeTeam === null && s.awayTeam === null)).toBe(true);
+  });
+
+  it('anchors a tie by its team to the fixed R32 slot (kick-off order is irrelevant)', () => {
+    // Four finished R32 ties given in scrambled order; each lands at its true
+    // bracket slot from the snapshot: RSA/CAN→2, NED/MAR→3, GER/PAR→0, BRA/JPN→8.
+    const matches = [
+      makeMatch({ matchId: 'ned-mar', homeTeam: 'NED', awayTeam: 'MAR', homeScore: 1, awayScore: 0, status: 'FINISHED', datetime: '2026-06-30T02:00:00Z' }),
+      makeMatch({ matchId: 'bra-jpn', homeTeam: 'BRA', awayTeam: 'JPN', homeScore: 2, awayScore: 1, status: 'FINISHED', datetime: '2026-06-29T18:00:00Z' }),
+      makeMatch({ matchId: 'rsa-can', homeTeam: 'RSA', awayTeam: 'CAN', homeScore: 0, awayScore: 1, status: 'FINISHED', datetime: '2026-06-28T20:00:00Z' }),
+      makeMatch({ matchId: 'ger-par', homeTeam: 'GER', awayTeam: 'PAR', homeScore: 1, awayScore: 1, penaltyHome: 3, penaltyAway: 4, status: 'FINISHED', datetime: '2026-06-29T21:30:00Z' }),
+    ];
+    const r32 = buildKnockoutTree(matches).find((r) => r.round === 'ROUND_OF_32')!.slots;
+    expect(r32[0].slotId).toBe('ger-par');
+    expect(r32[2].slotId).toBe('rsa-can');
+    expect(r32[3].slotId).toBe('ned-mar');
+    expect(r32[8].slotId).toBe('bra-jpn');
+  });
+
+  it('folds later rounds out of the R32 order — a tie sits at (R32 slot >> round)', () => {
+    // Brazil are R32 slot 8, so their quarter-final is slot 8 >> 2 = 2.
+    const matches = [
+      makeMatch({ matchId: 'qf', stage: 'QUARTER_FINAL', homeTeam: 'BRA', awayTeam: 'CIV', status: 'SCHEDULED', datetime: '2026-07-10T19:00:00Z' }),
+    ];
+    const qf = buildKnockoutTree(matches).find((r) => r.round === 'QUARTER_FINAL')!.slots;
+    expect(qf[2].slotId).toBe('qf');
+    expect(qf[0].homeTeam).toBeNull(); // the other slots stay structural placeholders
+  });
+
+  it('labels each unfilled slot from the bracket structure (feeders, not bare TBD)', () => {
+    const rounds = buildKnockoutTree([]);
+    const r16 = rounds.find((r) => r.round === 'ROUND_OF_16')!.slots;
+    // R16 slot 5 is fed by R32 matches 79 and 80 (MEX/ECU and ENG/COD).
+    expect(r16[5].homeFeeder).toEqual({ outcome: 'WINNER', feederRound: 'MATCH', feederNumber: 79 });
+    expect(r16[5].awayFeeder).toEqual({ outcome: 'WINNER', feederRound: 'MATCH', feederNumber: 80 });
+    const qf = rounds.find((r) => r.round === 'QUARTER_FINAL')!.slots;
+    // QF slot 0 is fed by R16 matches 89 and 90.
+    expect(qf[0].homeFeeder).toEqual({ outcome: 'WINNER', feederRound: 'MATCH', feederNumber: 89 });
+    const sf = rounds.find((r) => r.round === 'SEMI_FINAL')!.slots;
+    expect(sf[0].homeFeeder).toEqual({ outcome: 'WINNER', feederRound: 'QUARTER_FINAL', feederNumber: 1 });
+    expect(sf[1].awayFeeder).toEqual({ outcome: 'WINNER', feederRound: 'QUARTER_FINAL', feederNumber: 4 });
+    const final = rounds.find((r) => r.round === 'FINAL')!.slots;
+    expect(final[0].homeFeeder).toEqual({ outcome: 'WINNER', feederRound: 'SEMI_FINAL', feederNumber: 1 });
+    expect(final[0].awayFeeder).toEqual({ outcome: 'WINNER', feederRound: 'SEMI_FINAL', feederNumber: 2 });
+  });
+
+  it('keeps a fixture whose teams are off the bracket map rather than dropping it', () => {
+    const matches = [
+      makeMatch({ matchId: 'odd', homeTeam: 'XXX', awayTeam: 'YYY', homeScore: 1, awayScore: 0, status: 'FINISHED', datetime: '2026-06-28T20:00:00Z' }),
+    ];
+    const r32 = buildKnockoutTree(matches).find((r) => r.round === 'ROUND_OF_32')!.slots;
+    // Unknown teams can't be placed by the bracket, but the tie still appears
+    // (in the first free slot) instead of vanishing.
+    expect(r32.some((s) => s.slotId === 'odd')).toBe(true);
+  });
+
+  it('keeps a second fixture that collides on a slot rather than dropping it', () => {
+    // GER and PAR both anchor to R32 slot 0 (they're the same real tie). Given as
+    // two separate fixtures, the first takes the slot and the second is kept in the
+    // next free slot rather than overwriting or vanishing.
+    const matches = [
+      makeMatch({ matchId: 'first', homeTeam: 'GER', awayTeam: 'XXX', homeScore: 1, awayScore: 0, status: 'FINISHED', datetime: '2026-06-28T20:00:00Z' }),
+      makeMatch({ matchId: 'second', homeTeam: 'PAR', awayTeam: 'YYY', homeScore: 1, awayScore: 0, status: 'FINISHED', datetime: '2026-06-28T21:00:00Z' }),
+    ];
+    const r32 = buildKnockoutTree(matches).find((r) => r.round === 'ROUND_OF_32')!.slots;
+    expect(r32[0].slotId).toBe('first');
+    expect(r32.some((s) => s.slotId === 'second')).toBe(true);
+  });
+
+  it('does not place an all-placeholder tie (the skeleton already shows it)', () => {
+    const matches = [
+      makeMatch({
+        matchId: 'ph',
+        stage: 'ROUND_OF_16',
+        homeTeam: '',
+        awayTeam: '',
+        homeFeeder: { outcome: 'WINNER', feederRound: 'MATCH', feederNumber: 79 },
+        awayFeeder: { outcome: 'WINNER', feederRound: 'MATCH', feederNumber: 80 },
+        status: 'SCHEDULED',
+        datetime: '2026-07-05T20:00:00Z',
+      }),
+    ];
+    const r16 = buildKnockoutTree(matches).find((r) => r.round === 'ROUND_OF_16')!.slots;
+    // No resolved team to anchor on → not placed; the slot stays a structural
+    // placeholder (the feed adds nothing the skeleton doesn't already show).
+    expect(r16.some((s) => s.slotId === 'ph')).toBe(false);
   });
 });
 

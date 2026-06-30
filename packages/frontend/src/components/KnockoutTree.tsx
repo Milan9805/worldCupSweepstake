@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Match, BracketSlot, KnockoutFeeder, buildKnockoutTree, tieWinner } from '@sweepstake/shared';
+import { Match, BracketSlot, KnockoutFeeder, buildKnockoutTree } from '@sweepstake/shared';
 import Avatar from '@/components/Avatar';
 import LiveBadge from '@/components/LiveBadge';
 import ChannelPills from '@/components/ChannelPills';
@@ -48,10 +48,11 @@ interface KnockoutTreeProps {
 
 /**
  * The knockout bracket: a left-to-right column per round (horizontally
- * scrollable). The Round of 32 is taken straight from the real scraped fixtures;
- * every later round is calculated from who wins (see buildKnockoutTree), so a
- * winner advances automatically and ties not yet decided show "to be confirmed".
- * Each card is compact — flag, code, owner and score per side — with the
+ * scrollable). Every tie sits at its fixed bracket position (see
+ * buildKnockoutTree) — the matchups come from the real scraped fixtures, the
+ * positions from the fixed 2026 structure — so the tree never re-orders as
+ * results come in; a slot not yet filled shows the feeding tie ("Winner Match
+ * 77"). Each card is compact — flag, code, owner and score per side — with the
  * kick-off time, a winner highlight, and a live badge that links to the feed.
  * The round headings sit in a sticky bar that pins beneath the nav while the
  * tree scrolls and tracks the bracket's horizontal scroll. Measured SVG elbow
@@ -64,21 +65,15 @@ export default function KnockoutTree({
   claimedPerson,
 }: KnockoutTreeProps) {
   const rounds = useMemo(() => buildKnockoutTree(matches), [matches]);
-  // Which tie feeds which, derived from the data rather than slot position: a
-  // finished tie's winner is traced to whichever next-round slot now holds that
-  // team. The real bracket order isn't recoverable from kick-off time, so a
-  // position-based pairing would draw the wrong lines — this only links ties
-  // that have actually resolved, leaving future ties unconnected until they do.
+  // Which tie feeds which is now fixed by the bracket structure (buildKnockoutTree
+  // places every tie at its true position), so the connectors are structural: slot
+  // i of a round feeds slot i>>1 of the next. That draws the complete bracket — every
+  // path to the final, decided or not — rather than only the resolved links.
   const feederLinks = useMemo(() => {
     const links: { round: number; from: number; to: number }[] = [];
     for (let r = 0; r < rounds.length - 1; r++) {
-      rounds[r].slots.forEach((slot, from) => {
-        const winner = tieWinner(slot);
-        if (!winner) return;
-        const to = rounds[r + 1].slots.findIndex(
-          (s) => s.homeTeam === winner || s.awayTeam === winner,
-        );
-        if (to >= 0) links.push({ round: r, from, to });
+      rounds[r].slots.forEach((_, from) => {
+        links.push({ round: r, from, to: from >> 1 });
       });
     }
     return links;
@@ -120,8 +115,8 @@ export default function KnockoutTree({
 
   // Draw bracket connectors by measuring real card positions, so the lines stay
   // correct however flexbox lays the cards out, whatever a round's match count,
-  // and at any width. The which-feeds-which pairing comes from feederLinks
-  // (traced from results, not slot position), so only resolved ties draw a line.
+  // and at any width. The which-feeds-which pairing comes from feederLinks (the
+  // fixed bracket structure), so the full set of paths to the final is drawn.
   useIsomorphicLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;

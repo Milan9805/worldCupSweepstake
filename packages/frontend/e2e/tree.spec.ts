@@ -50,8 +50,9 @@ const MATCHES = [
 ];
 
 // R32 ties finished (CAN, BRA win) plus the feed's own Round-of-16 fixture:
-// CAN has advanced into it, but its opponent isn't drawn yet, so BBC names the
-// feeding tie ("Winner Match 77"). The tree shows the feed's matchups verbatim.
+// Brazil have advanced into it (R32 slot 8 → R16 slot 4), but their opponent
+// isn't drawn yet, so BBC names the feeding tie ("Winner Match 78" — the real
+// structural feeder of that slot). The tree shows the feed's matchups verbatim.
 const FINISHED_MATCHES = [
   match('m1', 'RSA', 'CAN', 'ROUND_OF_32', 'FINISHED', '2099-06-28T19:00:00Z', {
     homeScore: 0, awayScore: 1,
@@ -59,8 +60,8 @@ const FINISHED_MATCHES = [
   match('m2', 'BRA', 'JPN', 'ROUND_OF_32', 'FINISHED', '2099-06-29T18:00:00Z', {
     homeScore: 2, awayScore: 1,
   }),
-  match('r16', 'CAN', '', 'ROUND_OF_16', 'SCHEDULED', '2099-07-04T17:00:00Z', {
-    awayFeeder: { outcome: 'WINNER', feederRound: 'MATCH', feederNumber: 77 },
+  match('r16', 'BRA', '', 'ROUND_OF_16', 'SCHEDULED', '2099-07-05T17:00:00Z', {
+    awayFeeder: { outcome: 'WINNER', feederRound: 'MATCH', feederNumber: 78 },
   }),
 ];
 
@@ -132,13 +133,13 @@ test.describe('Tournament Tree — match-driven', () => {
     await mockApi(page, FINISHED_MATCHES);
     await page.goto('/tree');
 
-    // The Round-of-16 matchup comes straight from the feed fixture (CAN placed),
-    // not computed from R32 winners.
+    // The Round-of-16 matchup comes straight from the feed fixture (BRA placed at
+    // its fixed bracket slot), not computed from R32 winners.
     const r16 = page.getByTestId('round-column-ROUND_OF_16');
-    await expect(r16.getByText('CAN')).toBeVisible();
+    await expect(r16.getByText('BRA')).toBeVisible();
     // The opponent the draw hasn't filled yet shows its feeder label — never a
     // blank or "null" — which is the bug this whole change fixes.
-    await expect(r16.getByText('Winner Match 77')).toBeVisible();
+    await expect(r16.getByText('Winner Match 78')).toBeVisible();
     await expect(r16.getByText('null')).toHaveCount(0);
   });
 

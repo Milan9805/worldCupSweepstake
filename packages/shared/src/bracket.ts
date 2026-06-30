@@ -1,4 +1,5 @@
 import { Team, Match, ChannelBroadcast, MatchStatus, KnockoutFeeder } from './types';
+import { feedersForSlot, TEAM_R32_SLOT } from './knockoutStructure';
 
 /**
  * FIFA 2026 World Cup group-stage qualification.
@@ -205,29 +206,85 @@ function emptySlot(round: string, index: number): BracketSlot {
   };
 }
 
+// A placeholder slot at a fixed bracket position, carrying the feeder labels the
+// structure dictates ("Winner Match 77") so an undecided tie still shows where it
+// comes from instead of a bare "TBD".
+function skeletonSlot(round: string, roundIndex: number, slotIndex: number): BracketSlot {
+  const feeders = feedersForSlot(roundIndex, slotIndex);
+  const slot = emptySlot(round, slotIndex);
+  slot.homeFeeder = feeders.home;
+  slot.awayFeeder = feeders.away;
+  return slot;
+}
+
+// A real fixture placed at its fixed bracket slot. Falls back to the structural
+// feeder for a side the fixture left blank (e.g. a scheduled tie BBC gave no
+// placeholder for), so the slot always reads sensibly.
+function placedSlot(match: Match, roundIndex: number, slotIndex: number): BracketSlot {
+  const slot = matchToSlot(match);
+  const feeders = feedersForSlot(roundIndex, slotIndex);
+  if (!slot.homeTeam && !slot.homeFeeder) slot.homeFeeder = feeders.home;
+  if (!slot.awayTeam && !slot.awayFeeder) slot.awayFeeder = feeders.away;
+  return slot;
+}
+
 /**
- * Build the knockout bracket straight from the fixtures feed — one column per
- * round, each round's real fixtures in kick-off order. The fixtures are the
- * source of truth for the matchups: the scraper resolves each tie's teams (and
- * an unresolved side's feeder, e.g. "Winner of Match 77") as the draw fills in,
- * so we never *guess* who plays whom. A round with fewer fixtures than its size
- * is padded with placeholder slots so the full path to the final always renders.
+ * Build the knockout bracket on the fixed 2026 skeleton (see knockoutStructure):
+ * one column per round, every tie at its true bracket position so the tree never
+ * re-orders as results come in. Each fixture is placed by the team in it — a team
+ * is anchored to its Round-of-32 slot, and any later-round tie it reaches sits at
+ * (that slot >> round), the bracket's fold. Slots with no fixture yet render as
+ * structural placeholders labelled with the feeding tie ("Winner Match 77").
  *
- * (The pairing is deliberately NOT computed by position: the real bracket order
- * isn't recoverable from kick-off time — adjacent-by-time ties are not
- * adjacent-in-bracket — so anything other than the feed's own matchups is wrong.)
+ * The matchups are never invented: who plays whom always comes from the live feed
+ * (a fixture is only *placed*, never paired here). The structure supplies position
+ * and feeder labels only. A fixture whose team isn't in the bracket map (shouldn't
+ * happen for real data) falls back into the next free slot rather than vanishing.
  */
 export function buildKnockoutTree(matches: Match[]): TreeRound[] {
-  return ROUNDS.map((round) => {
-    const slots = matches
-      .filter((m) => m.stage === round)
-      .sort((a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime())
-      .map(matchToSlot);
+  return ROUNDS.map((round, roundIndex) => {
+    const size = ROUND_SIZES[round];
+    const placed: (BracketSlot | null)[] = new Array(size).fill(null);
+    const overflow: Match[] = [];
 
-    for (let k = slots.length; k < ROUND_SIZES[round]; k++) {
-      slots.push(emptySlot(round, k));
+    const roundMatches = matches
+      .filter((m) => m.stage === round)
+      .sort((a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime());
+
+    for (const match of roundMatches) {
+      // Anchor on whichever side is a real team we know the bracket position of;
+      // an all-placeholder future tie isn't placed (the skeleton already shows it).
+      const anchor =
+        match.homeTeam && match.homeTeam in TEAM_R32_SLOT
+          ? match.homeTeam
+          : match.awayTeam && match.awayTeam in TEAM_R32_SLOT
+            ? match.awayTeam
+            : null;
+      if (anchor === null) {
+        if (match.homeTeam || match.awayTeam) overflow.push(match); // resolved but off-bracket
+        continue;
+      }
+      const slotIndex = TEAM_R32_SLOT[anchor] >> roundIndex;
+      if (slotIndex < size && placed[slotIndex] === null) {
+        placed[slotIndex] = placedSlot(match, roundIndex, slotIndex);
+      } else {
+        overflow.push(match);
+      }
     }
 
+    // Fill the column: a placed fixture, else an unplaceable fixture (kept rather
+    // than lost), else the structural placeholder for that position.
+    let next = 0;
+    const slots: BracketSlot[] = [];
+    for (let i = 0; i < size; i++) {
+      if (placed[i]) {
+        slots.push(placed[i]!);
+      } else if (next < overflow.length) {
+        slots.push(placedSlot(overflow[next++], roundIndex, i));
+      } else {
+        slots.push(skeletonSlot(round, roundIndex, i));
+      }
+    }
     return { round, label: ROUND_LABELS[round], slots };
   });
 }

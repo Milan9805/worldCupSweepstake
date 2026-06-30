@@ -28,29 +28,51 @@ describe('KnockoutTree', () => {
     expect(screen.getByText('Final')).toBeInTheDocument();
   });
 
-  it('fills unscheduled rounds with the right number of placeholder cards', () => {
+  it('fills unscheduled rounds with structural placeholders', () => {
     render(<KnockoutTree matches={[]} />);
-    // Round of 16 has 8 ties → 8 placeholder cards, each with two TBD rows.
+    // R32 ties are bracket leaves with no feeder → bare "TBD" (16 ties × 2 sides).
+    const r32 = screen.getByTestId('round-column-ROUND_OF_32');
+    expect(within(r32).getAllByText('TBD')).toHaveLength(32);
+    // Later rounds label each side with the feeding tie. The only R16 "TBD"s are
+    // the three sides fed by the already-decided early R32 ties (matches 73-75),
+    // left unnumbered because those slots resolve by team in practice.
     const r16 = screen.getByTestId('round-column-ROUND_OF_16');
-    expect(within(r16).getAllByText('TBD')).toHaveLength(16);
-    // The Final has a single tie.
+    expect(within(r16).getAllByText(/Winner Match/)).toHaveLength(13);
+    expect(within(r16).getAllByText('TBD')).toHaveLength(3);
     const final = screen.getByTestId('round-column-FINAL');
-    expect(within(final).getAllByText('TBD')).toHaveLength(2);
+    expect(within(final).getByText('Winner SF 1')).toBeInTheDocument();
+    expect(within(final).getByText('Winner SF 2')).toBeInTheDocument();
   });
 
-  it('places matches in their round column, ordered by kick-off time', () => {
+  it('places each tie at its fixed bracket slot', () => {
     const matches = [
-      makeMatch({ matchId: 'late', homeTeam: 'GER', awayTeam: 'FRA', datetime: '2026-06-29T20:00:00Z' }),
-      makeMatch({ matchId: 'early', homeTeam: 'ENG', awayTeam: 'BRA', datetime: '2026-06-28T20:00:00Z' }),
+      makeMatch({ matchId: 'ger', homeTeam: 'GER', awayTeam: 'FRA', datetime: '2026-06-29T20:00:00Z' }),
+      makeMatch({ matchId: 'eng', homeTeam: 'ENG', awayTeam: 'BRA', datetime: '2026-06-28T20:00:00Z' }),
     ];
     render(<KnockoutTree matches={matches} />);
     const r32 = screen.getByTestId('round-column-ROUND_OF_32');
     const text = r32.textContent ?? '';
-    expect(text.indexOf('ENG')).toBeLessThan(text.indexOf('GER'));
-    // Both real ties render (the round is padded out to its full size with TBD
-    // placeholders, but the actual fixtures show their teams).
+    // GER are R32 slot 0, ENG slot 11 — GER appears first by bracket position,
+    // even though ENG kicked off earlier.
+    expect(text.indexOf('GER')).toBeLessThan(text.indexOf('ENG'));
+    expect(within(r32).getByText('GER')).toBeInTheDocument();
     expect(within(r32).getByText('ENG')).toBeInTheDocument();
-    expect(within(r32).getByText('FRA')).toBeInTheDocument();
+  });
+
+  it('orders the R32 column by fixed bracket slot, not kick-off time', () => {
+    // RSA/CAN are slot 2, NED/MAR slot 3, BRA/JPN slot 8 in the fixed bracket — so
+    // they read RSA, NED, BRA top-to-bottom, even though BRA/JPN kicked off before
+    // NED/MAR. The position is structural, never the clock.
+    const matches = [
+      makeMatch({ matchId: 'rsa-can', homeTeam: 'RSA', awayTeam: 'CAN', homeScore: 0, awayScore: 1, status: 'FINISHED', datetime: '2026-06-28T20:00:00Z' }),
+      makeMatch({ matchId: 'bra-jpn', homeTeam: 'BRA', awayTeam: 'JPN', homeScore: 2, awayScore: 1, status: 'FINISHED', datetime: '2026-06-29T18:00:00Z' }),
+      makeMatch({ matchId: 'ned-mar', homeTeam: 'NED', awayTeam: 'MAR', homeScore: 0, awayScore: 1, status: 'FINISHED', datetime: '2026-06-30T02:00:00Z' }),
+      makeMatch({ matchId: 'r16', stage: 'ROUND_OF_16', homeTeam: 'CAN', awayTeam: 'MAR', status: 'SCHEDULED', datetime: '2026-07-04T17:00:00Z' }),
+    ];
+    render(<KnockoutTree matches={matches} />);
+    const text = screen.getByTestId('round-column-ROUND_OF_32').textContent ?? '';
+    expect(text.indexOf('RSA')).toBeLessThan(text.indexOf('NED'));
+    expect(text.indexOf('NED')).toBeLessThan(text.indexOf('BRA'));
   });
 
   it('shows flags, owners and the kick-off time on a tie', () => {
