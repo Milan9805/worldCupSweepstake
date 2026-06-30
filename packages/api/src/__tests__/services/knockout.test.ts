@@ -203,7 +203,21 @@ describe('markKnockoutLosersEliminated', () => {
     expect(written.map((t) => t.teamCode)).toEqual(['ENG']);
   });
 
-  it('skips a match level on score (penalty shoot-out)', async () => {
+  it('eliminates the penalty shootout loser from a level score', async () => {
+    const teams = [makeTeam('ENG', 'A', 9, 6, 8), makeTeam('NGA', 'B', 6, 3, 5)];
+    mockedDb.getAllTeams.mockResolvedValue(teams as unknown as Record<string, unknown>[]);
+    mockedDb.batchPutTeams.mockResolvedValue(undefined);
+
+    // 1-1, ENG win 4-3 on pens → NGA is eliminated.
+    await markKnockoutLosersEliminated([
+      knockoutMatch({ homeScore: 1, awayScore: 1, penaltyHome: 4, penaltyAway: 3 }),
+    ]);
+
+    const written = mockedDb.batchPutTeams.mock.calls[0][0] as unknown as Team[];
+    expect(written.map((t) => t.teamCode)).toEqual(['NGA']);
+  });
+
+  it('skips a level score with no shootout tally (not yet resolvable)', async () => {
     const teams = [makeTeam('ENG', 'A', 9, 6, 8), makeTeam('NGA', 'B', 6, 3, 5)];
     mockedDb.getAllTeams.mockResolvedValue(teams as unknown as Record<string, unknown>[]);
 

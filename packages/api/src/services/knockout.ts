@@ -99,37 +99,51 @@ interface KnockoutMatchInput {
   awayTeam: string;
   homeScore: number | null;
   awayScore: number | null;
+  penaltyHome?: number | null;
+  penaltyAway?: number | null;
   status: string;
 }
 
 /**
+ * The loser's teamCode for a decided knockout tie, or null when it isn't decided
+ * (not finished, missing score, or level with no penalty result to break it).
+ * A tie level on the pitch is resolved by the penalty shootout tally.
+ */
+function knockoutLoser(m: KnockoutMatchInput): string | null {
+  if (m.stage === 'GROUP_STAGE' || m.status !== 'FINISHED') return null;
+  if (m.homeScore == null || m.awayScore == null) return null;
+  if (m.homeScore > m.awayScore) return m.awayTeam;
+  if (m.awayScore > m.homeScore) return m.homeTeam;
+  // Level — decided on penalties when we have the shootout tally.
+  if (m.penaltyHome != null && m.penaltyAway != null) {
+    if (m.penaltyHome > m.penaltyAway) return m.awayTeam;
+    if (m.penaltyAway > m.penaltyHome) return m.homeTeam;
+  }
+  return null;
+}
+
+/**
  * Mark the loser of every decided knockout match as eliminated, derived
- * directly from the finished fixtures (no bracket needed). A match level on
- * score went to penalties — which our score data can't resolve — so we skip it
- * rather than eliminate the wrong side. Idempotent: only teams whose
- * elimination flag actually changes are written.
+ * directly from the finished fixtures (no bracket needed). A tie level after
+ * extra time is resolved by its penalty shootout; a level tie with no shootout
+ * tally yet is left undecided rather than eliminating the wrong side.
+ * Idempotent: only teams whose elimination flag actually changes are written.
  */
 export async function markKnockoutLosersEliminated(matches: KnockoutMatchInput[]): Promise<void> {
-  const decided = matches.filter(
-    (m) =>
-      m.stage !== 'GROUP_STAGE' &&
-      m.status === 'FINISHED' &&
-      m.homeScore !== null &&
-      m.awayScore !== null &&
-      m.homeScore !== m.awayScore,
-  );
-  if (decided.length === 0) return;
+  const losers = matches
+    .map((m) => ({ loser: knockoutLoser(m), stage: m.stage }))
+    .filter((x): x is { loser: string; stage: string } => x.loser !== null);
+  if (losers.length === 0) return;
 
   const teams = await getAllTeams() as unknown as Team[];
   const byCode = new Map(teams.map((t) => [t.teamCode, t]));
   const changed: Team[] = [];
 
-  for (const m of decided) {
-    const loser = m.homeScore! > m.awayScore! ? m.awayTeam : m.homeTeam;
+  for (const { loser, stage } of losers) {
     const team = byCode.get(loser);
     if (team && !team.eliminated) {
       team.eliminated = true;
-      team.eliminatedAt = formatRoundName(m.stage);
+      team.eliminatedAt = formatRoundName(stage);
       changed.push(team);
     }
   }
