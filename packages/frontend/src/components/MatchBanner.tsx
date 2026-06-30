@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { Match, Team } from '@sweepstake/shared';
 import { getTournamentMatchInfo } from '@/lib/teamMatches';
 import { isGroupStageComplete } from '@/lib/fixtures';
-import { formatMatchDate, formatMatchTime, formatTimeUntil } from '@/lib/format';
+import { formatMatchDate, formatMatchTime, formatTimeUntil, formatPens } from '@/lib/format';
 import StageLink from '@/components/StageLink';
 import { useNow } from '@/hooks/useNow';
 import LiveBadge from '@/components/LiveBadge';
@@ -135,6 +135,11 @@ function LiveMatchRow({
         <OwnerTag owner={ownersByTeam[match.homeTeam] ?? null} />
         <span className="font-bold text-white tabular-nums">
           {match.homeScore ?? 0} - {match.awayScore ?? 0}
+          {formatPens(match.penaltyHome, match.penaltyAway) && (
+            <span className="ml-1 text-[11px] font-normal text-white/60">
+              ({formatPens(match.penaltyHome, match.penaltyAway)})
+            </span>
+          )}
         </span>
         <span className="font-semibold text-white">{teamLabel(match.awayTeam)}</span>
         <OwnerTag owner={ownersByTeam[match.awayTeam] ?? null} />

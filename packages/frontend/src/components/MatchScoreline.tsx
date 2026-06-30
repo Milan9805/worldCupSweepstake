@@ -3,6 +3,7 @@
 import { Match } from '@sweepstake/shared';
 import Avatar from '@/components/Avatar';
 import { TeamOwner } from '@/lib/owners';
+import { formatPens } from '@/lib/format';
 
 interface MatchScorelineProps {
   match: Match;
@@ -38,9 +39,16 @@ export default function MatchScoreline({ match, teamOwners, teamFlags }: MatchSc
         {match.status === 'SCHEDULED' ? (
           <span className="text-white/70 text-sm">vs</span>
         ) : (
-          <span className="font-bold">
-            {match.homeScore} - {match.awayScore}
-          </span>
+          <>
+            <span className="font-bold">
+              {match.homeScore} - {match.awayScore}
+            </span>
+            {formatPens(match.penaltyHome, match.penaltyAway) && (
+              <span className="block text-[10px] font-normal text-white/50 whitespace-nowrap">
+                {formatPens(match.penaltyHome, match.penaltyAway)}
+              </span>
+            )}
+          </>
         )}
       </div>
 

@@ -68,6 +68,17 @@ export function relativeTimeLines(ts: string, now: number = Date.now()): string[
   return [formatMatchDate(ts).replace(',', ''), formatMatchTime(ts)];
 }
 
+// The muted "pens H–A" line shown under a scoreline for a tie decided on
+// penalties (home–away orientation, matching the score above it). Returns null
+// when the match wasn't a shootout, so callers render nothing.
+export function formatPens(
+  penaltyHome: number | null | undefined,
+  penaltyAway: number | null | undefined,
+): string | null {
+  if (penaltyHome == null || penaltyAway == null) return null;
+  return `pens ${penaltyHome}–${penaltyAway}`;
+}
+
 // Human-friendly label for a match's stage. Group-stage matches show their group
 // letter ("Group A"); knockout rounds use the singular labels below. Any unknown
 // stage falls back to a title-cased version of the raw enum ("THIRD_PLACE" →

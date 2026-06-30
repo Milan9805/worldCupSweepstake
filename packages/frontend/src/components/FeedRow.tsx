@@ -154,6 +154,10 @@ function EventHeadline({
   const scorer = event.type === 'GOAL' ? (p.scorer as string | undefined) : undefined;
   const scorerMinute = p.scorerMinute as string | undefined;
 
+  // A Full Time on a knockout tie decided on penalties states the shootout
+  // result (winner first), so a 1–1 reads as the win it actually was.
+  const pens = penaltyResult(event, teamsByCode);
+
   return (
     <span>
       <TeamLabel code={home} teamsByCode={teamsByCode} ownersByTeam={ownersByTeam} />{' '}
@@ -165,8 +169,31 @@ function EventHeadline({
           {scorerMinute ? ` ${scorerMinute}'` : ''}
         </span>
       )}
+      {pens && <span className="text-green-100"> · {pens}</span>}
     </span>
   );
+}
+
+// "MAR win 3–2 on pens" for a FULL_TIME event carrying a shootout result, or
+// null otherwise. Reads the winner + tally from the payload; orders the score
+// winner-first so it reads as a win regardless of home/away.
+function penaltyResult(
+  event: FeedEvent,
+  teamsByCode: Record<string, Team>,
+): string | null {
+  if (event.type !== 'FULL_TIME') return null;
+  const p = event.payload;
+  const winner = p.shootoutWinner as string | undefined;
+  const home = p.homeTeam as string | undefined;
+  const penaltyHome = p.penaltyHome as number | undefined;
+  const penaltyAway = p.penaltyAway as number | undefined;
+  if (!winner || typeof penaltyHome !== 'number' || typeof penaltyAway !== 'number') {
+    return null;
+  }
+  const winnerPens = winner === home ? penaltyHome : penaltyAway;
+  const loserPens = winner === home ? penaltyAway : penaltyHome;
+  const winnerName = teamsByCode[winner]?.name ?? winner;
+  return `${winnerName} win ${winnerPens}–${loserPens} on pens`;
 }
 
 // Distinct owners (by name) of the given team codes, preserving order.

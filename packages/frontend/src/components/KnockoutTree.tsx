@@ -6,7 +6,7 @@ import { Match, BracketSlot, buildKnockoutTree } from '@sweepstake/shared';
 import Avatar from '@/components/Avatar';
 import LiveBadge from '@/components/LiveBadge';
 import ChannelPills from '@/components/ChannelPills';
-import { formatMatchDate, formatMatchTime } from '@/lib/format';
+import { formatMatchDate, formatMatchTime, formatPens } from '@/lib/format';
 import { TeamOwner } from '@/lib/owners';
 
 // useLayoutEffect warns when run during SSR; fall back to useEffect on the
@@ -254,8 +254,18 @@ function TreeMatch({
     );
   }
 
-  const homeWon = finished && (slot.homeScore ?? 0) > (slot.awayScore ?? 0);
-  const awayWon = finished && (slot.awayScore ?? 0) > (slot.homeScore ?? 0);
+  // Winner highlight: the higher score, or — when level after extra time — the
+  // higher penalty shootout tally, so the team that advanced on pens stays green.
+  const homeScore = slot.homeScore ?? 0;
+  const awayScore = slot.awayScore ?? 0;
+  const pensHome = slot.penaltyHome ?? null;
+  const pensAway = slot.penaltyAway ?? null;
+  const levelOnPens = homeScore === awayScore && pensHome != null && pensAway != null;
+  const homeWon =
+    finished && (homeScore > awayScore || (levelOnPens && pensHome! > pensAway!));
+  const awayWon =
+    finished && (awayScore > homeScore || (levelOnPens && pensAway! > pensHome!));
+  const pensLine = formatPens(slot.penaltyHome, slot.penaltyAway);
 
   return (
     <div
@@ -299,6 +309,9 @@ function TreeMatch({
         score={slot.status === 'SCHEDULED' ? null : slot.awayScore}
         won={awayWon}
       />
+      {pensLine && (
+        <div className="mt-0.5 pr-1 text-right text-[10px] text-white/50">{pensLine}</div>
+      )}
     </div>
   );
 }
